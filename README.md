@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <em>Your personal workspace AI assistant.</em>
-</p>
-
-<p align="center">
   <em>Your data. Your models. Your device.</em>
 </p>
 
@@ -132,20 +128,19 @@ cd ../cli-rs && cargo build --release
 
 ---
 
-
 ---
 
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
-| [USER_MANUAL.md](USER_MANUAL.md) | End-user guide |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Contributor setup |
-| [SECURITY.md](SECURITY.md) | Security policy & controls |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
+| Doc                                      | Description                |
+| ---------------------------------------- | -------------------------- |
+| [USER_MANUAL.md](USER_MANUAL.md)         | End-user guide             |
+| [ARCHITECTURE.md](ARCHITECTURE.md)       | System design              |
+| [DEVELOPMENT.md](DEVELOPMENT.md)         | Contributor setup          |
+| [SECURITY.md](SECURITY.md)               | Security policy & controls |
+| [CHANGELOG.md](CHANGELOG.md)             | Release history            |
+| [CONTRIBUTING.md](CONTRIBUTING.md)       | How to contribute          |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards        |
 
 ## License
 
