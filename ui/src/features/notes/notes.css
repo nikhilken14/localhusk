@@ -1,0 +1,1109 @@
+/* --- Notes — card grid + full-page editor --- */
+
+.notes-page {
+  padding: 32px 40px 80px;
+  max-width: 90%;
+  margin: 0 auto;
+  font-family: inherit;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+/* Header */
+.notes-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.notes-heading h1 {
+  font-family: Manrope, sans-serif;
+  font-size: 28px;
+  letter-spacing: -0.7px;
+  margin: 0 0 6px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.notes-heading p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Toolbar: search + sort + view */
+.notes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.notes-search {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.notes-search input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.notes-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-sort {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.notes-view-toggle {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+/* Color / pin filter chips */
+.notes-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.notes-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.notes-chip:hover {
+  background: var(--surface-2);
+}
+
+.notes-chip.active {
+  background: #2d3930;
+  border-color: #2d3930;
+  color: #fff;
+}
+
+.dark .notes-chip.active {
+  background: #78977d;
+  border-color: #78977d;
+  color: #171a18;
+}
+
+.notes-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.notes-chip .dot.green {
+  background: #5c9272;
+}
+.notes-chip .dot.yellow {
+  background: #c4a35a;
+}
+.notes-chip .dot.red {
+  background: #c46b66;
+}
+
+.notes-chip .count {
+  font-size: 11px;
+  opacity: 0.75;
+  min-width: 1.1em;
+  text-align: center;
+}
+
+.notes-count-label {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Section labels */
+.notes-section-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.notes-section-label span {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.notes-section-label svg {
+  color: var(--muted);
+}
+
+/* Card grid */
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+  overflow: visible;
+}
+
+.note-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+  padding: 18px 18px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(32, 42, 34, 0.04);
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.note-card:hover {
+  box-shadow: 0 8px 24px rgba(32, 42, 34, 0.08);
+}
+
+.note-card.color-yellow {
+  background: #fbf6e9;
+  border-color: #f0e6c8;
+}
+.note-card.color-green {
+  background: #eef6f0;
+  border-color: #d5e8db;
+}
+.note-card.color-red {
+  background: #faf0ef;
+  border-color: #f0d8d6;
+}
+
+.dark .note-card.color-yellow {
+  background: #2e2a1f;
+  border-color: #4a4330;
+}
+.dark .note-card.color-green {
+  background: #1f2a22;
+  border-color: #2f4336;
+}
+.dark .note-card.color-red {
+  background: #2c2221;
+  border-color: #4a3432;
+}
+
+.note-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.note-card-top h3 {
+  margin: 0;
+  font-family: Manrope, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.note-card-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.note-card-menu .bare-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+}
+
+.note-card-color-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.note-card-color-label .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.note-card-body {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--text) 78%, var(--muted));
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.note-card-body p {
+  margin: 0;
+}
+
+.note-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.note-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.note-card-tags .tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, #fff);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dark .note-card-tags .tag {
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+
+.note-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.note-card-meta .pin-on {
+  color: var(--green, #537b62);
+}
+
+/* Empty / status */
+.notes-status,
+.notes-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 64px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.notes-empty h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.notes-empty p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.notes-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: var(--red-bg, #f8e7e5);
+  color: var(--red, #bd6864);
+  font-size: 13px;
+}
+
+.notes-spinner {
+  animation: notes-spin 0.8s linear infinite;
+}
+
+@keyframes notes-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========== Editor page ========== */
+
+.notes-editor-page {
+  max-width: 96%;
+  margin: 0 auto;
+  padding: 24px 32px 80px;
+  box-sizing: border-box;
+}
+
+.notes-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  margin-bottom: 14px;
+}
+
+.notes-back:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.notes-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 18px;
+  align-items: start;
+}
+
+.notes-editor-main {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px 28px 16px;
+  /* Tall writing surface — fills most of the viewport */
+  min-height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* contain children; page scrolls if needed */
+}
+
+.notes-title-input {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: Manrope, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  color: var(--text);
+  margin-bottom: 14px;
+  padding: 0;
+  flex: none;
+}
+
+.notes-title-input::placeholder {
+  color: var(--muted-2, #a0a69e);
+}
+
+.notes-md-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.notes-md-toolbar button {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notes-md-toolbar button:hover,
+.notes-md-toolbar button.active {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.notes-md-toolbar .sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+/* Large content area — no visible scrollbar, no resize handle */
+.notes-body-area {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 420px;
+  height: auto;
+  border: 0;
+  outline: none;
+  resize: none; /* remove drag handle + associated chrome */
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  padding: 4px 2px 12px;
+  overflow-y: auto;
+  /* Hide scrollbar while keeping scroll for long notes */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.notes-body-area::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.notes-body-area::placeholder {
+  color: var(--muted-2, #a0a69e);
+}
+
+.notes-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+}
+
+/* Sidebar cards */
+.notes-editor-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notes-side-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.notes-side-card h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.notes-side-card > p {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.notes-color-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.notes-swatch {
+  aspect-ratio: 1.35;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  position: relative;
+  transition:
+    border-color 0.15s,
+    transform 0.12s;
+}
+
+.notes-swatch:hover {
+  transform: translateY(-1px);
+}
+
+.notes-swatch.selected {
+  border-color: #2d3930;
+  box-shadow: 0 0 0 1px #2d3930;
+}
+
+.dark .notes-swatch.selected {
+  border-color: #78977d;
+  box-shadow: 0 0 0 1px #78977d;
+}
+
+.notes-swatch.green {
+  background: #d8ecd9;
+}
+.notes-swatch.yellow {
+  background: #f3e7b8;
+}
+.notes-swatch.red {
+  background: #f0d4d1;
+}
+
+.notes-swatch .check {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #2d3930;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.notes-swatch-labels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Tags input */
+.notes-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.notes-tag-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.notes-tag-chips .chip button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.notes-tag-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.notes-tag-input-row input {
+  flex: 1;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.notes-tag-input-row input:focus {
+  outline: 2px solid color-mix(in srgb, var(--green) 40%, transparent);
+  border-color: var(--green);
+}
+
+/* Pin toggle */
+.notes-pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notes-pin-row .label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notes-pin-row .label strong {
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notes-pin-row .label span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.notes-switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--line);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.notes-switch.on {
+  background: #2d3930;
+}
+
+.dark .notes-switch.on {
+  background: #78977d;
+}
+
+.notes-switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.notes-switch.on span {
+  transform: translateX(18px);
+}
+
+/* Card preview in sidebar */
+.notes-preview-card {
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid transparent;
+}
+
+.notes-preview-card.color-yellow {
+  background: #fbf6e9;
+  border-color: #f0e6c8;
+}
+.notes-preview-card.color-green {
+  background: #eef6f0;
+  border-color: #d5e8db;
+}
+.notes-preview-card.color-red {
+  background: #faf0ef;
+  border-color: #f0d8d6;
+}
+
+.dark .notes-preview-card.color-yellow {
+  background: #2e2a1f;
+  border-color: #4a4330;
+}
+.dark .notes-preview-card.color-green {
+  background: #1f2a22;
+  border-color: #2f4336;
+}
+.dark .notes-preview-card.color-red {
+  background: #2c2221;
+  border-color: #4a3432;
+}
+
+.notes-preview-card h5 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.notes-preview-card p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text) 75%, var(--muted));
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notes-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.notes-preview-meta .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Editor bottom bar */
+.notes-editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 4px;
+}
+
+.notes-editor-bar .stored {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.notes-editor-bar .actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Markdown preview in editor — match write area size, no scrollbar chrome */
+.notes-md-preview {
+  flex: 1 1 auto;
+  min-height: 420px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 2px 12px;
+}
+
+.notes-md-preview::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.notes-md-preview h1,
+.notes-md-preview h2,
+.notes-md-preview h3 {
+  margin: 0.6em 0 0.35em;
+  font-family: Manrope, sans-serif;
+}
+
+.notes-md-preview p {
+  margin: 0.4em 0;
+}
+
+.notes-md-preview ul,
+.notes-md-preview ol {
+  margin: 0.4em 0;
+  padding-left: 1.3em;
+}
+
+@media (max-width: 900px) {
+  .notes-editor-layout {
+    grid-template-columns: 1fr;
+  }
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .notes-page,
+  .notes-editor-page {
+    padding: 20px 14px 50px;
+  }
+  .notes-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .notes-count-label {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Card action dropdown */
+.note-card-menu {
+  position: relative;
+}
+
+.note-card-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 150px;
+  padding: 6px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(32, 42, 34, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.note-card-dropdown button {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.note-card-dropdown button:hover {
+  background: var(--surface-2);
+}
+
+.note-card-dropdown button.danger {
+  color: var(--red, #bd6864);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Dedicated read-only note detail view */
+.notes-detail-page {
+  width: 90%;
+  max-width: 90%;
+  margin: 0 auto;
+  padding: 28px 32px 56px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.notes-detail-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.notes-detail-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: clamp(22px, 4vw, 42px);
+  box-shadow: var(--shadow);
+}
+.notes-detail-card.color-yellow {
+  background: color-mix(in srgb, var(--yellow-bg) 38%, var(--surface));
+  border-color: color-mix(in srgb, var(--yellow) 24%, var(--line));
+}
+.notes-detail-card.color-green {
+  background: color-mix(in srgb, var(--green-bg) 38%, var(--surface));
+  border-color: color-mix(in srgb, var(--green) 24%, var(--line));
+}
+.notes-detail-card.color-red {
+  background: color-mix(in srgb, var(--red-bg) 32%, var(--surface));
+  border-color: color-mix(in srgb, var(--red) 24%, var(--line));
+}
+.notes-detail-eyebrow,
+.notes-detail-meta,
+.notes-detail-pinned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.notes-detail-pinned {
+  margin-left: 10px;
+}
+.notes-detail-header h1 {
+  margin: 18px 0 12px;
+  font:
+    700 clamp(25px, 4vw, 36px)/1.2 Manrope,
+    sans-serif;
+  letter-spacing: -0.8px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.notes-detail-meta {
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+.notes-detail-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.notes-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 18px;
+}
+.notes-detail-content {
+  margin-top: 30px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.notes-detail-content > :first-child {
+  margin-top: 0;
+}
+.notes-detail-content h1,
+.notes-detail-content h2,
+.notes-detail-content h3 {
+  font-family: Manrope, sans-serif;
+  line-height: 1.3;
+  margin: 1.5em 0 0.6em;
+}
+.notes-detail-content p {
+  margin: 0 0 1em;
+}
+.notes-detail-content pre {
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.notes-detail-content code {
+  font-size: 0.9em;
+}
+.notes-detail-content blockquote {
+  margin: 1em 0;
+  padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--green);
+  color: var(--muted);
+}
+.notes-detail-content table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+}
+.notes-detail-content th,
+.notes-detail-content td {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+}
+.notes-detail-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+@media (max-width: 680px) {
+  .notes-detail-page {
+    padding: 18px 14px 36px;
+  }
+  .notes-detail-topbar {
+    align-items: flex-start;
+  }
+  .notes-detail-card {
+    padding: 20px 16px;
+  }
+}
+
+/* Markdown emphasis: keep italic formatting visible in both editor preview
+   and the read-only note detail page, even when host-app styles are loaded. */
+.notes-md-preview em,
+.notes-detail-content em,
+.markdown-body em {
+  font-style: italic !important;
+}
+
+.notes-md-preview strong em,
+.notes-md-preview em strong,
+.notes-detail-content strong em,
+.notes-detail-content em strong,
+.markdown-body strong em,
+.markdown-body em strong {
+  font-style: italic !important;
+}

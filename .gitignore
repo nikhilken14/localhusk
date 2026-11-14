@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg
+
+# Node / Vite
+node_modules/
+ui/dist/
+ui/.vite/
+*.local
+
+# Rust
+cli-rs/target/
+
+# Local runtime / secrets / user data (never commit)
+.husk/
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+*.log
+/logs/
+data/
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Release / packaging artifacts
+*.zip
+!releases/*.zip
+*.tar.gz
+*.sha256
+
+# Test / coverage
+.coverage
+htmlcov/
+.tox/

@@ -1,0 +1,180 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native CLI
+        run: |
+          cd cli-rs
+          cargo build --release
+          strip target/release/husk || true
+          mkdir -p ../builds/linux
+          cp target/release/husk ../builds/linux/husk
+          chmod +x ../builds/linux/husk
+
+      - name: Pack Linux zip
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          STAGE="localhusk-${VERSION}-linux-x86_64"
+          mkdir -p "/tmp/${STAGE}"
+          rsync -a \
+            --exclude '.git' \
+            --exclude 'cli-rs/target' \
+            --exclude '**/__pycache__' \
+            --exclude '**/*.pyc' \
+            --exclude 'ui/node_modules' \
+            --exclude 'ui/dist' \
+            --exclude 'builds/macos' \
+            --exclude 'builds/windows' \
+            ./ "/tmp/${STAGE}/"
+          mkdir -p "/tmp/${STAGE}/builds/linux" "/tmp/${STAGE}/cli-rs/target/release"
+          cp builds/linux/husk "/tmp/${STAGE}/builds/linux/husk"
+          cp builds/linux/husk "/tmp/${STAGE}/cli-rs/target/release/husk"
+          chmod +x "/tmp/${STAGE}/install.sh" "/tmp/${STAGE}/builds/linux/husk" "/tmp/${STAGE}/cli-rs/target/release/husk"
+          cd /tmp
+          zip -r "${STAGE}.zip" "${STAGE}"
+          sha256sum "${STAGE}.zip" | tee "${STAGE}.zip.sha256"
+          echo "LINUX_ZIP=${STAGE}.zip" >> "$GITHUB_ENV"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: |
+            /tmp/localhusk-*-linux-x86_64.zip
+            /tmp/localhusk-*-linux-x86_64.zip.sha256
+          retention-days: 5
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native CLI
+        run: |
+          cd cli-rs
+          cargo build --release
+          New-Item -ItemType Directory -Force -Path ..\builds\windows | Out-Null
+          Copy-Item target\release\husk.exe ..\builds\windows\husk.exe
+
+      - name: Pack Windows zip
+        shell: pwsh
+        run: |
+          $VERSION = $env:GITHUB_REF_NAME
+          $STAGE = "localhusk-$VERSION-windows-x86_64"
+          $OUT = Join-Path $env:RUNNER_TEMP $STAGE
+          New-Item -ItemType Directory -Force -Path $OUT | Out-Null
+
+          # Copy project files (exclude heavy / generated dirs)
+          $exclude = @('.git', 'cli-rs\target', 'ui\node_modules', 'ui\dist', 'builds\macos', 'builds\linux')
+          Get-ChildItem -Force | Where-Object {
+            $name = $_.Name
+            -not ($exclude -contains $name)
+          } | ForEach-Object {
+            Copy-Item $_.FullName -Destination (Join-Path $OUT $_.Name) -Recurse -Force
+          }
+
+          # Place binaries
+          New-Item -ItemType Directory -Force -Path (Join-Path $OUT 'builds\windows') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $OUT 'cli-rs\target\release') | Out-Null
+          Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'builds\windows\husk.exe')
+          Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'cli-rs\target\release\husk.exe')
+
+          $zipPath = Join-Path $env:RUNNER_TEMP "$STAGE.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path (Join-Path $OUT '*') -DestinationPath $zipPath -Force
+
+          $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
+          "$hash  $STAGE.zip" | Out-File -Encoding ascii (Join-Path $env:RUNNER_TEMP "$STAGE.zip.sha256")
+          Write-Host "Created $zipPath"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: |
+            ${{ runner.temp }}/localhusk-*-windows-x86_64.zip
+            ${{ runner.temp }}/localhusk-*-windows-x86_64.zip.sha256
+          retention-days: 5
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux package
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-package
+          path: artifacts
+
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-package
+          path: artifacts
+
+      - name: List assets
+        run: |
+          ls -la artifacts/
+          echo "### Checksums" > body-extra.md
+          echo '```' >> body-extra.md
+          cat artifacts/*.sha256 2>/dev/null || true
+          echo '```' >> body-extra.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          body: |
+            ## LocalHusk ${{ github.ref_name }}
+
+            Open-source, local-first AI assistant for **Linux** and **Windows** (x86_64).
+
+            ### Quick install
+
+            **Linux / WSL2**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+            ```
+
+            **Windows (PowerShell)**
+            ```powershell
+            irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+            ```
+
+            ### Platform packages
+
+            Download the matching archive below, extract, then run `./install.sh` or `.\install.ps1`.
+
+            - `localhusk-*-linux-x86_64.zip`
+            - `localhusk-*-windows-x86_64.zip`
+
+            SHA-256 checksums are attached as `*.sha256` files.
+
+            After install, open a **new terminal** and run `husk`.
+
+            Data lives under `~/.husk` (Linux) or `%USERPROFILE%\.husk` (Windows).
