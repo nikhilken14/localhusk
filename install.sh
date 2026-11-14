@@ -2,18 +2,18 @@
 # LocalHusk installer for Linux. Installs per-user; no root required.
 #
 # Usage (end users):
-#   curl -fsSL https://raw.githubusercontent.com/nikhilken14/husk/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.sh | bash
 #   ./install.sh                          # from extracted release / clone
 #
 # Default repo for curl|bash installs (override with HUSK_GITHUB / HUSK_RELEASE_URL).
 #   curl -fsSL <raw-or-release-url>/install.sh | bash
-#   HUSK_RELEASE_URL=https://github.com/nikhilken14/husk/archive/refs/heads/main.zip bash install.sh
+#   HUSK_RELEASE_URL=https://github.com/nikhilken14/localhusk/archive/refs/heads/main.zip bash install.sh
 #   HUSK_GITHUB=owner/repo bash <(curl -fsSL ...)
 #
 set -euo pipefail
 
 # Maintainers: set this to your public GitHub path so `curl | bash` works with zero env vars.
-HUSK_DEFAULT_GITHUB="${HUSK_DEFAULT_GITHUB:-nikhilken14/husk}"
+HUSK_DEFAULT_GITHUB="${HUSK_DEFAULT_GITHUB:-nikhilken14/localhusk}"
 
 
 say()  { printf '%s\n' "$*"; }

@@ -2,13 +2,13 @@
 #
 # Usage:
 #   .\install.ps1
-#   $env:HUSK_RELEASE_URL = "https://github.com/nikhilken14/husk/archive/refs/heads/main.zip"; irm $url | iex   (or run this script after download)
+#   $env:HUSK_RELEASE_URL = "https://github.com/nikhilken14/localhusk/archive/refs/heads/main.zip"; irm $url | iex   (or run this script after download)
 #   $env:HUSK_GITHUB = "owner/repo"; .\install.ps1
 #
 $ErrorActionPreference = "Stop"
 
 # Default repo for irm|iex installs (override with HUSK_GITHUB / HUSK_RELEASE_URL).
-$HuskDefaultGithub = if ($env:HUSK_DEFAULT_GITHUB) { $env:HUSK_DEFAULT_GITHUB } else { "nikhilken14/husk" }
+$HuskDefaultGithub = if ($env:HUSK_DEFAULT_GITHUB) { $env:HUSK_DEFAULT_GITHUB } else { "nikhilken14/localhusk" }
 
 
 function Say([string]$m) { Write-Host $m }

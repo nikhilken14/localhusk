@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <em>Your personal workspace AI assistant.</em>
+</p>
+
+<p align="center">
   <em>Your data. Your models. Your device.</em>
 </p>
 
@@ -28,28 +32,28 @@ The installer supports **Linux** and **Windows**. It sets up Python, the backend
 ### Linux / WSL2
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nikhilken14/husk/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/nikhilken14/husk/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.ps1 | iex
 ```
 
 ### Already have the repo?
 
 ```bash
-git clone https://github.com/nikhilken14/husk.git
-cd husk
+git clone https://github.com/nikhilken14/localhusk.git
+cd localhusk
 ./install.sh          # Linux
 # .\install.ps1       # Windows
 ```
 
 ### Prefer a zip download?
 
-1. Open **[Releases](https://github.com/nikhilken14/husk/releases)**
-2. Download **`husk-*-full.zip`** (or the source archive)
+1. Open **[Releases](https://github.com/nikhilken14/localhusk/releases)**
+2. Download **`localhusk-*-linux-x86_64.zip`** / **`localhusk-*-windows-x86_64.zip`** (or the source archive)
 3. Extract and run `./install.sh` or `.\install.ps1`
 
 Then open a **new terminal** and run:
