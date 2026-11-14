@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <em>Your personal workspace AI assistant.</em>
-</p>
-
-<p align="center">
   <em>Your data. Your models. Your device.</em>
 </p>
 
