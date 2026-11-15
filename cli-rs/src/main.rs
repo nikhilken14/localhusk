@@ -299,12 +299,16 @@ fn main() {
                     ui::dim(&format!("Husk v{PKG_VERSION}{latest}"));
                 }
                 "/status" => {
-                    let api_status = if services.is_backend_running() {
+                    // Run the `&mut self` checks first, so no immutable borrow
+                    // of `services` is alive while they execute.
+                    let backend_up = services.is_backend_running();
+                    let frontend_up = services.is_frontend_running();
+                    let api_status = if backend_up {
                         services.backend_url.as_str()
                     } else {
                         "off (starts on /ui)"
                     };
-                    let ui_status = if services.is_frontend_running() {
+                    let ui_status = if frontend_up {
                         services.frontend_url.as_str()
                     } else {
                         "off"
