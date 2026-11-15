@@ -1,5 +1,7 @@
 # Prebuilt CLI binaries (v1.0.0)
 
+> These binaries must be rebuilt from `cli-rs/` (`cargo build --release`) whenever the CLI source changes. A binary built before the CLI changes in `CHANGELOG.md` (Unreleased) will still show the old banner and old exit behaviour.
+
 Optional native launchers. The installer and `husk.py` work without them (Python fallback).
 
 | Platform | Binary | Notes |

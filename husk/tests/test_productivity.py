@@ -25,9 +25,9 @@ def test_tasks_status_transitions_filters(client):
     assert done["status"] == "done" and done["completed_at"] is not None
     reopened = client.patch(f"{API}/tasks/{t['id']}", json={"status": "todo"}).json()
     assert reopened["completed_at"] is None
-    assert client.get(f"{API}/tasks?overdue=true").json()[0]["id"] == t["id"]
+    assert client.get(f"{API}/tasks?status=todo").json()[0]["id"] == t["id"]
     client.patch(f"{API}/tasks/{t['id']}/status", json={"status": "done"})
-    assert client.get(f"{API}/tasks?overdue=true").json() == []  # done tasks are never overdue
+    assert client.get(f"{API}/tasks?status=todo").json() == []  # time-based filters (overdue etc.) were removed
     assert client.get(f"{API}/tasks?status=done&q=shi").json()[0]["id"] == t["id"]
     assert client.patch(f"{API}/tasks/{t['id']}", json={"due_at": None}).json()["due_at"] is None  # null clears
     assert client.patch(f"{API}/tasks/{t['id']}", json={"task": "Ship v2"}).json()["task"] == "Ship v2"
@@ -65,7 +65,7 @@ def test_calendar_range_overlap_validation_and_calendars(client):
     cals = client.get(f"{API}/calendar/calendars").json()
     assert len(cals) == 1 and cals[0]["provider"] == "local"
     assert client.delete(f"{API}/calendar/events/{eid}").status_code == 204
-    assert client.post(f"{API}/calendar/sync").json() == {"synced": []}
+    assert client.post(f"{API}/calendar/sync").json()["synced"] == []  # calendar is local-only
 
 
 def test_synced_events_are_read_only(client, db):

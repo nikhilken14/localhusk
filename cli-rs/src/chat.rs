@@ -53,7 +53,7 @@ pub fn sync_from_backend(cfg: &mut HashMap<String, String>, backend_base: &str) 
     let default = raw.find("\"is_default\": true")
         .or_else(|| raw.find("\"is_default\":true"))
         .and_then(|pos| {
-            let window = &raw[pos.saturating_sub(400)..pos];
+            let window = &raw[safe_start(&raw, pos.saturating_sub(400))..pos];
             let model = extract_json_string(window, "model").or_else(|| extract_json_string(&raw[pos..], "model"));
             let base_url = extract_json_string(window, "base_url");
             let kind = extract_json_string(window, "kind");
@@ -125,35 +125,63 @@ fn map_provider_kind(provider: &str) -> &str {
     else { "openai" } // OpenAI-compatible endpoints (including many local servers)
 }
 
+/// Move `idx` forward to the next UTF-8 character boundary so slicing can never panic.
+fn safe_start(s: &str, idx: usize) -> usize {
+    let mut i = idx;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+fn read_hex4(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<u32> {
+    let mut v = 0u32;
+    for _ in 0..4 {
+        v = v * 16 + chars.next()?.to_digit(16)?;
+    }
+    Some(v)
+}
+
+/// Minimal JSON string extractor (std-only). Decodes UTF-8 correctly and handles `\uXXXX` escapes,
+/// including surrogate pairs, so non-ASCII replies (accents, ₹, emoji) are not garbled.
 fn extract_json_string(s: &str, key: &str) -> Option<String> {
     let marker = format!("\"{}\":", key);
     let start = s.find(&marker)? + marker.len();
-    let bytes = s.as_bytes();
-    let mut i = start;
-    while i < bytes.len() && bytes[i].is_ascii_whitespace() { i += 1; }
-    if bytes.get(i) == Some(&b'n') { return None; } // null
-    if bytes.get(i) != Some(&b'"') { return None; }
-    i += 1;
+    let mut chars = s[start..].chars().peekable();
+    while chars.peek().map_or(false, |c| c.is_whitespace()) {
+        chars.next();
+    }
+    if chars.next()? != '"' {
+        return None; // null or a non-string value
+    }
     let mut out = String::new();
-    while i < bytes.len() {
-        match bytes[i] {
-            b'"' => return Some(out),
-            b'\\' => {
-                i += 1;
-                if i >= bytes.len() { break; }
-                match bytes[i] {
-                    b'n' => out.push('\n'),
-                    b'r' => out.push('\r'),
-                    b't' => out.push('\t'),
-                    b'"' => out.push('"'),
-                    b'\\' => out.push('\\'),
-                    b'/' => out.push('/'),
-                    c => out.push(c as char),
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'b' => out.push('\u{8}'),
+                'f' => out.push('\u{c}'),
+                'u' => {
+                    let hi = read_hex4(&mut chars)?;
+                    if (0xD800..0xDC00).contains(&hi) {
+                        if chars.next()? == '\\' && chars.next()? == 'u' {
+                            let lo = read_hex4(&mut chars)?;
+                            let cp = 0x10000 + ((hi - 0xD800) << 10) + (lo.wrapping_sub(0xDC00) & 0x3FF);
+                            out.push(char::from_u32(cp).unwrap_or('\u{FFFD}'));
+                        } else {
+                            out.push('\u{FFFD}');
+                        }
+                    } else {
+                        out.push(char::from_u32(hi).unwrap_or('\u{FFFD}'));
+                    }
                 }
-            }
-            b => out.push(b as char),
+                other => out.push(other), // \" \\ \/
+            },
+            c => out.push(c),
         }
-        i += 1;
     }
     None
 }
@@ -161,7 +189,7 @@ fn extract_json_string(s: &str, key: &str) -> Option<String> {
 fn extract_default_id(list: &str) -> Option<String> {
     // Find object with is_default true and take nearest preceding "id"
     let pos = list.find("\"is_default\": true").or_else(|| list.find("\"is_default\":true"))?;
-    let window = &list[pos.saturating_sub(500)..pos];
+    let window = &list[safe_start(list, pos.saturating_sub(500))..pos];
     // last "id" in the window
     let mut last = None;
     let mut search = window;
@@ -243,10 +271,7 @@ pub fn send(
     let reply = if !backend_base.is_empty() && backend_healthy(backend_base) {
         match send_via_backend(backend_base, conversation_id, message) {
             Ok(r) => r,
-            Err(e) => {
-                eprintln!("Backend chat failed ({e}); falling back to direct LLM...");
-                send_direct(cfg, history, message)?
-            }
+            Err(_) => send_direct(cfg, history, message)?, // backend chat failed: fall back to the direct LLM
         }
     } else {
         send_direct(cfg, history, message)?

@@ -98,7 +98,7 @@ def test_invalid_plan_paused_agent_and_delete_handles_jobs(client):
 
 def test_overview_metrics(client):
     aid = _agent(client)
-    client.post(f"{API}/agents/{aid}/run", json={"input": "x", "plan": {"steps": []}})
+    client.post(f"{API}/agents/{aid}/run", json={"input": "x", "plan": {"steps": [{"tool": "notes.list", "arguments": {}}]}})
     _drain()
     overview = client.get(f"{API}/agents/overview").json()
     assert overview["totals"]["total"] == 1 and overview["totals"]["completed"] == 1 and len(overview["days"]) >= 7
@@ -154,13 +154,17 @@ def test_event_triggers_respect_filters(client, db):
     assert len(runs) == 1 and runs[0].trigger == "event" and runs[0].job_id == match.id and "task.status_changed" in runs[0].goal
 
 
-def test_automation_skip_if_running_prevents_overlapping_runs(client):
+def test_automation_skip_if_running_prevents_overlapping_runs(client, db):
     job = client.post(f"{API}/automation/jobs", json={
         "name": "No overlap", "trigger_type": "interval", "trigger_config": {"interval_seconds": 60},
         "enabled": True, "skip_if_running": True,
     })
     assert job.status_code == 201, job.text
     first = client.post(f"{API}/automation/jobs/{job.json()['id']}/run").json()
+    # Only in-flight work blocks a new run (a merely queued run does not), so mark the first as running.
+    run = db.get(AgentRun, first["run_id"])
+    run.status = "running"
+    db.commit()
     second = client.post(f"{API}/automation/jobs/{job.json()['id']}/run").json()
     assert first["status"] == "queued" and first["run_id"]
     assert second == {"job_id": job.json()["id"], "run_id": None, "status": "skipped"}

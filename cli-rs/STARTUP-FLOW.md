@@ -7,6 +7,6 @@ The native CLI follows this lifecycle:
 3. Accept terminal chat while the backend initializes. Terminal chat calls the configured OpenAI-compatible LLM endpoint directly through `curl`.
 4. On `/ui`, wait up to 45 seconds for `GET /api/v1/health`. Once healthy, start only the Vite frontend and point it at the already-running backend.
 5. On `/cli`, stop only the frontend. Keep the backend child alive and reuse it on the next `/ui`.
-6. On `/exit` (or EOF), stop the frontend and backend child processes.
+6. On `/exit`, `/quit`, `/q`, EOF (Ctrl+Z / Ctrl+D), Ctrl+C or closing the console window, stop the frontend and backend child processes that Husk started. On Windows a console-control handler kills both process trees even when Husk is interrupted. A backend that was already running before Husk started is left running, and `/exit` says so.
 
 Backend and frontend logs are written to `HUSK_HOME/logs/backend.log` and `HUSK_HOME/logs/frontend.log`.

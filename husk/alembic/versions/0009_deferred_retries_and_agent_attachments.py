@@ -18,6 +18,9 @@ def upgrade():
         batch.alter_column("conversation_id", existing_type=sa.String(36), nullable=True)
         batch.add_column(sa.Column("agent_id", sa.String(36), nullable=True))
         batch.add_column(sa.Column("run_id", sa.String(36), nullable=True))
+        # Named FKs are required for SQLite batch mode; they must match the ORM model.
+        batch.create_foreign_key("fk_chat_attachments_agent_id_agents", "agents", ["agent_id"], ["id"], ondelete="CASCADE")
+        batch.create_foreign_key("fk_chat_attachments_run_id_agent_runs", "agent_runs", ["run_id"], ["id"], ondelete="SET NULL")
     op.create_index("ix_chat_attachments_agent", "chat_attachments", ["agent_id", "created_at"])
     op.create_index("ix_chat_attachments_run", "chat_attachments", ["run_id"])
 
@@ -26,6 +29,8 @@ def downgrade():
     op.drop_index("ix_chat_attachments_run", table_name="chat_attachments")
     op.drop_index("ix_chat_attachments_agent", table_name="chat_attachments")
     with op.batch_alter_table("chat_attachments") as batch:
+        batch.drop_constraint("fk_chat_attachments_run_id_agent_runs", type_="foreignkey")
+        batch.drop_constraint("fk_chat_attachments_agent_id_agents", type_="foreignkey")
         batch.drop_column("run_id")
         batch.drop_column("agent_id")
         batch.alter_column("conversation_id", existing_type=sa.String(36), nullable=False)

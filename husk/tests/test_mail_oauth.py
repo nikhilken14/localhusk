@@ -75,9 +75,7 @@ def test_sync_read_send_reply_and_disconnect(client, monkeypatch, db):
     assert client.post(f"{API}/mail/send", json={"account_id": account_id, "to": ["not-an-email"], "body": "yo"}).status_code == 422
     assert client.post(f"{API}/mail/messages/{mid}/send-reply", json={"body": "ok", "reply_all": True}).status_code == 202
     assert fake.sent == [("new", "me@example.com", ["x@y.io"]), ("reply", "m1", True)]
-    synced = client.post(f"{API}/calendar/sync").json()["synced"][0]
-    assert synced["events_added"] == 1 and client.get(f"{API}/calendar/calendars").json()[-1]["account_email"] == "me@example.com"
-    assert db.query(CalendarEvent).filter_by(source="google").count() == 1
+    assert client.post(f"{API}/calendar/sync").json()["synced"] == []  # calendar is local-only; no provider sync
     gone = client.delete(f"{API}/mail/accounts/{account_id}").json()
     assert gone == {"deleted": True, "revoked": True}
     assert db.query(MailAccount).count() == 0 and db.query(MailMessage).count() == 0

@@ -3,14 +3,77 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::atomic::{AtomicU32, Ordering},
     thread,
     time::{Duration, Instant},
 };
 use crate::config;
 
+// PIDs of the child processes we own. Kept in statics so the Windows console-control handler
+// (Ctrl+C / closing the window), which runs on its own thread, can still shut them down.
+static BACKEND_PID: AtomicU32 = AtomicU32::new(0);
+static FRONTEND_PID: AtomicU32 = AtomicU32::new(0);
+
+/// Result of shutting everything down, so the caller can tell the person what actually happened.
+pub struct StopReport {
+    pub ui_stopped: bool,
+    pub backend_stopped: bool,
+    /// The backend was already running when Husk started, so Husk does not own it.
+    pub backend_left_running: bool,
+}
+
+#[cfg(windows)]
+fn kill_tree(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn console_ctrl_handler(_event: u32) -> i32 {
+    // Ctrl+C, Ctrl+Break or the console window closing: take the child processes down with us,
+    // then return 0 so the default handler still terminates Husk.
+    for slot in [&FRONTEND_PID, &BACKEND_PID] {
+        let pid = slot.swap(0, Ordering::SeqCst);
+        if pid != 0 {
+            kill_tree(pid);
+        }
+    }
+    0
+}
+
+/// Make sure Ctrl+C / closing the window does not leave uvicorn or Vite running in the background.
+/// (On Unix the children share the terminal's process group and receive the signal themselves.)
+pub fn install_ctrl_handler() {
+    #[cfg(windows)]
+    {
+        extern "system" {
+            fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> i32>, add: i32) -> i32;
+        }
+        unsafe {
+            SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
+        }
+    }
+}
+
+/// Open a URL in the default browser (best effort).
+pub fn open_url(url: &str) {
+    #[cfg(windows)]
+    let result = Command::new("cmd").args(["/C", "start", "", url]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    let result = Command::new("xdg-open").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let _ = result;
+}
+
 pub struct Services {
     backend: Option<Child>,
     frontend: Option<Child>,
+    /// True when a healthy backend was already running at startup (not started by this process).
+    backend_external: bool,
     pub backend_url: String,
     pub frontend_url: String,
 }
@@ -20,6 +83,7 @@ impl Services {
         Self {
             backend: None,
             frontend: None,
+            backend_external: false,
             backend_url: String::new(),
             frontend_url: String::new(),
         }
@@ -136,7 +200,7 @@ impl Services {
         let standard_url = "http://127.0.0.1:8000";
         if Self::healthy(standard_url) {
             self.backend_url = standard_url.into();
-            println!("Backend already running: {}", self.backend_url);
+            self.backend_external = true;
             return Ok(());
         }
 
@@ -237,6 +301,10 @@ impl Services {
             }
         });
 
+        if let Some(child) = self.backend.as_ref() {
+            BACKEND_PID.store(child.id(), Ordering::SeqCst);
+        }
+
         // Quick sanity: if the process dies within ~1.5s, surface the log tail.
         thread::sleep(Duration::from_millis(1500));
         if let Some(child) = self.backend.as_mut() {
@@ -244,6 +312,7 @@ impl Services {
                 let tail = Self::tail_log(&log_path, 20);
                 self.backend_url.clear();
                 self.backend = None;
+                BACKEND_PID.store(0, Ordering::SeqCst);
                 return Err(format!(
                     "Backend exited immediately ({status}).\n\
                      Log: {}\n\
@@ -253,12 +322,11 @@ impl Services {
             }
         }
 
-        println!("Backend starting in background: {}", self.backend_url);
         Ok(())
     }
 
     /// Wait for the background backend when a feature actually needs the API.
-    fn wait_backend_ready(&mut self, timeout: Duration) -> Result<(), String> {
+    pub fn wait_backend_ready(&mut self, timeout: Duration) -> Result<(), String> {
         let until = Instant::now() + timeout;
         let log_path = config::home().join("logs/backend.log");
         while Instant::now() < until {
@@ -358,6 +426,10 @@ impl Services {
                 .map_err(|e| format!("Frontend launch failed: {e}"))?,
         );
 
+        if let Some(child) = self.frontend.as_ref() {
+            FRONTEND_PID.store(child.id(), Ordering::SeqCst);
+        }
+
         thread::sleep(Duration::from_secs(2));
         if self
             .frontend
@@ -371,40 +443,42 @@ impl Services {
                 log_path.display()
             ));
         }
-        println!(
-            "Web UI: {}\nAPI:    {}\nDocs:   {}/docs",
-            self.frontend_url, self.backend_url, self.backend_url
-        );
         Ok(())
     }
 
-    pub fn stop_ui(&mut self) {
+    /// Stop the web UI only. Returns true if it was running.
+    pub fn stop_ui(&mut self) -> bool {
+        let was_running = self.frontend.is_some();
         stop_child(&mut self.frontend);
+        FRONTEND_PID.store(0, Ordering::SeqCst);
         self.frontend_url.clear();
-        println!("Web UI stopped; backend remains warm.");
+        was_running
     }
 
-    pub fn stop_all(&mut self) {
-        self.stop_ui();
+    /// Stop everything Husk started. A backend that was already running before Husk launched is
+    /// left alone (Husk does not own it) and reported as such.
+    pub fn stop_all(&mut self) -> StopReport {
+        let ui_stopped = self.stop_ui();
+        let backend_stopped = self.backend.is_some();
         stop_child(&mut self.backend);
+        BACKEND_PID.store(0, Ordering::SeqCst);
+        let backend_left_running = self.backend_external && !self.backend_url.is_empty();
         self.backend_url.clear();
+        StopReport { ui_stopped, backend_stopped, backend_left_running }
     }
 }
 
 impl Drop for Services {
     fn drop(&mut self) {
-        self.stop_all();
+        let _ = self.stop_all();
     }
 }
 
 #[cfg(windows)]
 fn stop_child(child: &mut Option<Child>) {
     if let Some(mut p) = child.take() {
-        let _ = Command::new("taskkill")
-            .args(["/PID", &p.id().to_string(), "/T", "/F"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        kill_tree(p.id());
+        let _ = p.kill(); // fallback if taskkill is unavailable
         let _ = p.wait();
     }
 }

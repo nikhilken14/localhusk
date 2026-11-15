@@ -9,6 +9,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _head_revision() -> str:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
+HEAD_REVISION = _head_revision()
+
+
 def _alembic(db_path: Path, target: str):
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{db_path.as_posix()}", "PYTHONPATH": str(ROOT / "src")}
     return subprocess.run([sys.executable, "-m", "alembic", "upgrade", target], cwd=ROOT, env=env, capture_output=True, text=True)
@@ -77,7 +88,7 @@ def test_database_created_outside_alembic_is_adopted_not_crashed(tmp_path):
     result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     con = sqlite3.connect(db_path)
-    assert con.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007_automation_overlap_guard",)
+    assert con.execute("SELECT version_num FROM alembic_version").fetchone() == (HEAD_REVISION,)
     con.close()
     assert list((tmp_path / "backups").glob("husk_backup_*.db")), "the untracked database must be backed up before stamping"
 
@@ -94,6 +105,6 @@ def test_untracked_current_orm_schema_is_stamped_at_latest_revision(tmp_path):
     result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     con = sqlite3.connect(db_path)
-    assert con.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007_automation_overlap_guard",)
+    assert con.execute("SELECT version_num FROM alembic_version").fetchone() == (HEAD_REVISION,)
     assert [row[1] for row in con.execute("PRAGMA table_info(automation_jobs)")].count("skip_if_running") == 1
     con.close()

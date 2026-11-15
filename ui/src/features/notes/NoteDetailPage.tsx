@@ -34,7 +34,7 @@ function dateLabel(value?: string) {
   });
 }
 
-export function NoteDetailPage() {
+export function NoteDetailPage({ notify }: { notify?: (text: string) => void } = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [note, setNote] = useState<Note | null>(null);
@@ -46,7 +46,12 @@ export function NoteDetailPage() {
     let active = true;
     setLoading(true); setError("");
     getNote(id).then((value) => { if (active) setNote(value); })
-      .catch((err: unknown) => { if (active) setError(err instanceof Error ? err.message : "Unable to load note."); })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const message = err instanceof Error ? err.message : "Unable to load note.";
+        setError(message);
+        notify?.(message);
+      })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [id]);

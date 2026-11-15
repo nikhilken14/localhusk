@@ -5,6 +5,24 @@ All notable changes to LocalHusk are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- CLI: the banner now shows the real version (from `Cargo.toml`) instead of a hardcoded `1.4`.
+- CLI: cleaner layout — status block, no empty model/provider placeholders, word-wrapped replies, a spinner while waiting, and a single prompt line instead of two rules around every input.
+- CLI: enables ANSI colours and UTF-8 on Windows PowerShell 5.1 / conhost so box-drawing characters render correctly, and uses the real console width.
+- CLI: `/ui` opens the browser; new `/clear` and `/version`; `/chat <message>` (listed in `/help`) now works.
+
+### Fixed
+
+- CLI: `/exit`, Ctrl+C, EOF and closing the window now reliably stop the backend and web UI that Husk started, and `/exit` reports what it stopped.
+- CLI: EOF on stdin no longer loops forever on empty input.
+- CLI: replies containing non-ASCII text or `\uXXXX` escapes are decoded correctly, and slicing the model list can no longer panic on multi-byte characters.
+- Web UI: `NoteDetailPage` accepts the `notify` prop passed by `App.tsx` (fixes the TypeScript build error).
+- Backend: migration `0009` creates the `chat_attachments` foreign keys that the ORM model declares.
+- Tests: updated for local-only calendar, removed task time filters, and the current agent/automation behaviour; migration tests follow the Alembic head revision.
+
 ## [1.0.0] – 2026-11-14
 
 ### Added
