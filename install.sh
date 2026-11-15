@@ -28,6 +28,18 @@ fi
 RELEASE_URL="${HUSK_RELEASE_URL:-}"
 TMP_EXTRACT=""
 
+# Newest published Release asset (built by CI with a fresh launcher); empty if none / offline.
+latest_release_url() {
+  local api json=""
+  api="https://api.github.com/repos/$1/releases/latest"
+  if command -v curl >/dev/null 2>&1; then
+    json="$(curl -fsSL "$api" 2>/dev/null || true)"
+  elif command -v wget >/dev/null 2>&1; then
+    json="$(wget -qO- "$api" 2>/dev/null || true)"
+  fi
+  printf '%s' "$json" | grep -oE '"browser_download_url": *"[^"]*linux-x86_64\.zip"' | head -n1 | sed -E 's/.*"(https[^"]*)"$/\1/' || true
+}
+
 download_release() {
   local url="$1"
   local tmp
@@ -66,7 +78,14 @@ if [[ -n "$RELEASE_URL" ]]; then
   download_release "$RELEASE_URL"
 elif [[ -z "$SRC" ]] || { [[ ! -f "$SRC/husk.py" ]] && [[ ! -d "$SRC/husk" ]]; }; then
   if [[ -n "${HUSK_GITHUB:-${HUSK_DEFAULT_GITHUB}}" ]]; then
-    download_release "https://github.com/${HUSK_GITHUB:-$HUSK_DEFAULT_GITHUB}/archive/refs/heads/main.zip"
+    _gh="${HUSK_GITHUB:-$HUSK_DEFAULT_GITHUB}"
+    _latest="$(latest_release_url "$_gh")"
+    if [[ -n "$_latest" ]]; then
+      download_release "$_latest"
+    else
+      say "No published release found; installing from the main branch (its bundled launcher may be outdated)."
+      download_release "https://github.com/${_gh}/archive/refs/heads/main.zip"
+    fi
   else
     die "Run from an extracted release, or set HUSK_RELEASE_URL / HUSK_GITHUB (or HUSK_DEFAULT_GITHUB in install.sh)."
   fi

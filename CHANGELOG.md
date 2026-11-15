@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: replies containing non-ASCII text or `\uXXXX` escapes are decoded correctly, and slicing the model list can no longer panic on multi-byte characters.
 - Web UI: the topbar model label and token counters now refresh right after a chat reply and after any model change (the `husk:usage` event was listened for but never sent), and it distinguishes "No default model" from "No model connected".
 - CLI: panels and replies use the full terminal width.
+- Installers: `install.ps1` / `install.sh` run via `irm | iex` / `curl | bash` now install the latest published GitHub Release (with its freshly built launcher) instead of the launcher committed on `main`, which could be outdated. New `husk --version` / `husk --help` print without starting the backend.
 - Web UI: `NoteDetailPage` accepts the `notify` prop passed by `App.tsx` (fixes the TypeScript build error).
 - Backend: migration `0009` creates the `chat_attachments` foreign keys that the ORM model declares.
 - Tests: updated for local-only calendar, removed task time filters, and the current agent/automation behaviour; migration tests follow the Alembic head revision.

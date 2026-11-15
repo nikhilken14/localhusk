@@ -22,6 +22,18 @@ if ($MyInvocation.MyCommand.Path) {
 $ReleaseUrl = $env:HUSK_RELEASE_URL
 $TmpExtract = $null
 
+# Resolve the newest published GitHub Release asset (built by CI with a fresh launcher) so that
+# `irm ... | iex` installs the current release instead of the launcher committed to the main branch.
+function Get-LatestReleaseUrl([string]$gh, [string]$pattern) {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$gh/releases/latest" -Headers @{ "User-Agent" = "localhusk-installer" }
+        $asset = $rel.assets | Where-Object { $_.name -like $pattern -and $_.name -notlike "*.sha256" } | Select-Object -First 1
+        if ($asset) { return $asset.browser_download_url }
+    } catch { }
+    return $null
+}
+
 function Download-Release([string]$url) {
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("husk-install-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force $tmp | Out-Null
@@ -50,7 +62,13 @@ try {
     } elseif (-not $Src -or (-not (Test-Path (Join-Path $Src "husk.py")) -and -not (Test-Path (Join-Path $Src "husk")))) {
          $gh = if ($env:HUSK_GITHUB) { $env:HUSK_GITHUB } else { $HuskDefaultGithub }
         if ($gh) {
-            Download-Release "https://github.com/$gh/archive/refs/heads/main.zip"
+            $latest = Get-LatestReleaseUrl $gh "localhusk-*-windows-x86_64.zip"
+            if ($latest) {
+                Download-Release $latest
+            } else {
+                Warn "No published release found; installing from the main branch (its bundled launcher may be outdated)."
+                Download-Release "https://github.com/$gh/archive/refs/heads/main.zip"
+            }
         } else {
             throw "Run install.ps1 from an extracted LocalHusk release, or set HUSK_RELEASE_URL / HUSK_GITHUB."
         }
@@ -126,7 +144,7 @@ try {
     foreach ($rb in $rustCandidates) {
         if (Test-Path $rb) {
             Copy-Item $rb (Join-Path $BinDir "husk.exe") -Force
-            Say "Installed native Rust launcher: $(Join-Path $BinDir 'husk.exe')"
+            Say "Installed native Rust launcher: $(Join-Path $BinDir 'husk.exe')  (from $rb)"
             $installedNative = $true
             break
         }

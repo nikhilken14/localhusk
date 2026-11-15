@@ -66,6 +66,21 @@ fn chat_turn(
 }
 
 fn main() {
+    // Quick checks that must not start the backend: `husk --version` / `husk --help`.
+    if let Some(arg) = env::args().nth(1) {
+        match arg.as_str() {
+            "--version" | "-V" | "version" => {
+                println!("husk {VERSION}");
+                return;
+            }
+            "--help" | "-h" => {
+                println!("husk {VERSION} - LocalHusk local AI assistant\n\nUsage: husk [--version | --help]\n\nRun `husk` with no arguments to start the interactive CLI (type /help inside).");
+                return;
+            }
+            _ => {}
+        }
+    }
+
     ui::init_terminal();
     services::install_ctrl_handler();
 
