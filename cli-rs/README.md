@@ -1,33 +1,72 @@
 # Husk native CLI
 
-The Rust executable is the terminal launcher. The FastAPI backend remains Python and the web UI remains the existing Node/Vite application. The crate uses only Rust's standard library; terminal chat calls the OpenAI-compatible endpoint through `curl`.
+The Rust executable is the terminal launcher for LocalHusk. The FastAPI backend remains Python and the web UI remains the existing Node/Vite application. The crate uses **only Rust's standard library** (`std`-only, zero external dependencies); terminal chat and GitHub tag checks call endpoints via `curl`.
 
 ## Source layout
 
 ```text
 cli-rs/
 ├── Cargo.toml
+├── Cargo.lock
+├── build.ps1
+├── build.sh
 ├── README.md
+├── STARTUP-FLOW.md
 └── src/
-    ├── main.rs       # REPL and commands
-    ├── config.rs     # ~/.husk/.env
-    ├── services.rs   # backend/frontend process lifecycle
-    └── chat.rs       # curl-based LLM chat
+    ├── main.rs       # REPL, commands, GitHub release tag check
+    ├── ui.rs         # 2-column Rich-parity terminal UI & panels
+    ├── config.rs     # ~/.husk/.env persistence (LLM + OAuth)
+    ├── services.rs   # Lazy backend/frontend process lifecycle & cleanup
+    └── chat.rs       # Backend & curl-based LLM chat + model sync
 ```
 
 ## Build
 
 Install Rust only on the machine that builds/releases Husk:
 
-```powershell
+```bash
 cd cli-rs
 cargo build --release
 ```
 
-Windows output: `target\release\husk.exe`
-Linux output: `target/release/husk`
+- Windows output: `target\release\husk.exe`
+- Linux / macOS output: `target/release/husk`
 
-The end user does not need Rust or Cargo. Package the resulting executable in the installer payload.
+> **Note:** After rebuilding, copy the new binary into `~/.husk/bin/husk[.exe]` (or `builds/windows/husk.exe` / `builds/linux/husk`) so your global `husk` command uses the updated build rather than an older cached binary.
+
+Helper scripts:
+
+```bash
+./build.sh          # Linux / macOS
+.\build.ps1         # Windows PowerShell
+```
+
+## Runtime behavior
+
+- **Lazy backend**: Does **not** spawn Uvicorn on bare startup. Reuses an already-running instance if healthy; otherwise starts it on demand (`/ui`, `/sync`, `/llm` push, etc.).
+- **GitHub update notice**: Background check against the latest release tag; shows a warning when a newer version exists.
+- **OAuth wizard**: `/oauth` configures Google / Microsoft client credentials (stored in `~/.husk/.env`).
+- **Clean `/exit`**: Stops only the processes that Husk itself spawned. An external backend is left running and the user is told so.
+- **Windows Ctrl+C safety**: Console-control handler kills owned process trees so Uvicorn/Vite are never left behind.
+- **Shared model DB**: CLI, backend and UI all use the same SQLite database under `~/.husk/data/husk.db`.
+
+## Commands
+
+| Command     | Description |
+|-------------|-------------|
+| `/help`     | Show command table |
+| `/llm`      | Configure LLM provider / endpoint / model / key |
+| `/oauth`    | Configure Google & Microsoft OAuth credentials |
+| `/sync`     | Pull the default model from the backend |
+| `/ui`       | Start web UI (and backend if needed) and open browser |
+| `/cli`      | Stop only the web UI; keep backend warm |
+| `/new`      | Start a new conversation |
+| `/clear`    | Clear screen and redraw header |
+| `/status`   | Show LLM, API and UI status |
+| `/version`  | Show version + GitHub latest tag |
+| `/exit`     | Stop owned services and quit |
+
+Plain text (no leading `/`) is sent as a chat message.
 
 ## Runtime layout
 
@@ -42,34 +81,19 @@ The end user does not need Rust or Cargo. Package the resulting executable in th
 └── logs/
 ```
 
-`HUSK_HOME` can override `~/.husk`. At startup the CLI spawns the Python backend in the background and immediately enters the terminal REPL; it does not wait for backend health. Terminal chat is available while Uvicorn initializes. `/ui` waits for `/api/v1/health` (up to 45 seconds) and then starts only the frontend, reusing the already-running backend. `/cli` stops only the frontend and leaves the backend warm. `/exit` stops both child processes. Logs are written to `logs/backend.log` and `logs/frontend.log`.
+`HUSK_HOME` can override `~/.husk`.
 
 ## Runtime prerequisites
 
 - Python environment with `fastapi` and `uvicorn` for the backend.
-- Node.js 20+ and npm for `/ui`.
-- `curl` on PATH for health checks and terminal chat.
-- A reachable OpenAI-compatible LLM endpoint.
+- Node.js 18+ and npm for `/ui`.
+- `curl` on PATH for health checks, chat and GitHub tag lookup.
+- A reachable OpenAI-compatible LLM endpoint (or Ollama, Anthropic, Google via the configured provider).
 
 ## Security note
 
-This standard-library-only version stores `LLM_API_KEY` in `~/.husk/.env` so it can load the same configuration format. On Unix it sets file permissions to `0600`. On Windows, protect the `.husk` directory with the current user's filesystem permissions. For OS credential-store integration, add a platform keyring crate or keep the existing Python keyring implementation; that cannot be delivered as a zero-external-crate build.
+This standard-library-only version stores `LLM_API_KEY` (and OAuth secrets) in `~/.husk/.env`. On Unix it sets file permissions to `0600`. On Windows protect the `.husk` directory with the current user's filesystem permissions.
 
-## Look and feel
+## Version
 
-The native CLI mirrors `husk.py`: Husk logo, rounded panels, accent colour `#2fa6f5`, status dots, and a `❯` prompt — implemented with ANSI escapes only (still zero external crates).
-
-## Current scope
-
-The CLI supports `/help`, `/llm`, `/ui`, `/cli`, `/status`, `/new`, and `/exit`. It does not yet expose the Python CLI's OAuth wizard or agent inspection command. Those integrations remain available in the web UI/backend.
-
-
-## Shared model database (CLI + backend + UI)
-
-CLI, FastAPI backend, and web UI all use the same SQLite database under `~/.husk/data/husk.db`.
-
-- On startup the CLI launches the backend and **pulls the default LLM model** from `GET /api/v1/llm/models`.
-- `/llm` writes local `~/.husk/.env` **and** upserts the default model in the backend store.
-- `/sync` re-pulls the default model from the backend.
-- Terminal chat prefers `POST /api/v1/conversations/.../messages` (same models, usage, history as the UI). If the API is down it falls back to a direct OpenAI-compatible `curl` call using local endpoint settings.
-
+Current crate version: **1.0.1** (kept in sync with GitHub release tags of the form `v1.0.1`).

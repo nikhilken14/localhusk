@@ -1,5 +1,5 @@
-//! Terminal presentation helpers (ANSI only — no external crates).
-//! Visual language mirrors husk.py (Rich): accent #2fa6f5, rounded panels, logo.
+//! Terminal presentation helpers (std-only ANSI — zero external crates).
+//! Visual layout mirrors `husk.py` (Rich): two-column header, accent #2fa6f5, rounded panels.
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,8 +32,6 @@ const LOGO_WIDTH: usize = 34;
 
 #[cfg(windows)]
 mod win {
-    //! Windows PowerShell 5.1 / conhost does not enable ANSI colours or UTF-8 by default, which is
-    //! why box-drawing characters and colours can look broken. Turn both on via kernel32.
     use std::ffi::c_void;
 
     type Handle = *mut c_void;
@@ -44,7 +42,7 @@ mod win {
         size: [i16; 2],
         cursor: [i16; 2],
         attrs: u16,
-        window: [i16; 4], // left, top, right, bottom
+        window: [i16; 4],
         max: [i16; 2],
     }
 
@@ -56,7 +54,7 @@ mod win {
         fn GetConsoleScreenBufferInfo(h: Handle, info: *mut ConsoleInfo) -> i32;
     }
 
-    const STD_OUTPUT_HANDLE: u32 = 0xFFFF_FFF5; // (DWORD)-11
+    const STD_OUTPUT_HANDLE: u32 = 0xFFFF_FFF5;
     const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
 
     pub fn init() {
@@ -73,7 +71,13 @@ mod win {
     pub fn width() -> Option<usize> {
         unsafe {
             let h = GetStdHandle(STD_OUTPUT_HANDLE);
-            let mut info = ConsoleInfo { size: [0; 2], cursor: [0; 2], attrs: 0, window: [0; 4], max: [0; 2] };
+            let mut info = ConsoleInfo {
+                size: [0; 2],
+                cursor: [0; 2],
+                attrs: 0,
+                window: [0; 4],
+                max: [0; 2],
+            };
             if GetConsoleScreenBufferInfo(h, &mut info) != 0 {
                 let w = info.window[2] as i32 - info.window[0] as i32 + 1;
                 if w > 0 {
@@ -85,7 +89,6 @@ mod win {
     }
 }
 
-/// Call once at startup: enables colours + UTF-8 on Windows consoles.
 pub fn init_terminal() {
     #[cfg(windows)]
     win::init();
@@ -98,7 +101,10 @@ pub fn term_width() -> usize {
             return w.max(40);
         }
     }
-    if let Some(w) = std::env::var("COLUMNS").ok().and_then(|s| s.parse::<usize>().ok()) {
+    if let Some(w) = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+    {
         if w >= 40 {
             return w;
         }
@@ -113,13 +119,11 @@ pub fn term_width() -> usize {
             }
         }
     }
-    80
+    100
 }
 
-/// Width for panels: the full terminal minus one column (writing into the last column makes
-/// some consoles wrap and break the right border).
 pub fn panel_width() -> usize {
-    term_width().saturating_sub(1).max(50)
+    term_width().saturating_sub(1).max(60)
 }
 
 pub fn clear_screen() {
@@ -159,12 +163,25 @@ fn visible_len(s: &str) -> usize {
     strip_ansi(s).chars().count()
 }
 
-/// Left padding that centres `plain_len` characters inside a panel of outer width `w`.
-fn center_pad(w: usize, plain_len: usize) -> String {
-    " ".repeat(w.saturating_sub(2).saturating_sub(plain_len) / 2)
+fn center_in(s: &str, width: usize) -> String {
+    let len = visible_len(s);
+    if len >= width {
+        return s.to_string();
+    }
+    let left = (width - len) / 2;
+    let right = width - len - left;
+    format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
 }
 
-/// Rounded panel like Rich box.ROUNDED.
+fn pad_right(s: &str, width: usize) -> String {
+    let len = visible_len(s);
+    if len >= width {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(width - len))
+    }
+}
+
 pub fn panel(title: &str, body_lines: &[String], width: usize) {
     let inner = width.saturating_sub(2);
     let title_w = visible_len(title);
@@ -178,11 +195,11 @@ pub fn panel(title: &str, body_lines: &[String], width: usize) {
     println!("{ACCENT}{}{RESET}", hline(width, "╰", "─", "╯"));
 }
 
-/// Greedy word wrap that leaves blank lines, indented lines and code fences untouched.
 pub fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     for raw in text.lines() {
-        let verbatim = raw.starts_with("    ") || raw.starts_with('\t') || raw.trim_start().starts_with("```");
+        let verbatim =
+            raw.starts_with("    ") || raw.starts_with('\t') || raw.trim_start().starts_with("```");
         if verbatim || raw.chars().count() <= width {
             out.push(raw.to_string());
             continue;
@@ -210,11 +227,15 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
 }
 
 fn dot(on: bool) -> String {
-    if on { format!("{GREEN}●{RESET}") } else { format!("{DIM}○{RESET}") }
+    if on {
+        format!("{GREEN}●{RESET}")
+    } else {
+        format!("{RED}●{RESET}")
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Header
+// Header (2-column layout matching husk.py)
 // ---------------------------------------------------------------------------
 
 pub struct HeaderInfo<'a> {
@@ -225,51 +246,84 @@ pub struct HeaderInfo<'a> {
     pub cwd: &'a str,
     pub llm_ok: bool,
     pub oauth_ok: bool,
-    pub api_ok: bool,
 }
 
 pub fn header(h: &HeaderInfo) {
-    let w = panel_width().max(60);
-    clear_screen();
+    let w = panel_width().max(76);
+    let inner = w.saturating_sub(2);
+    let left_w = (inner.saturating_sub(1)) / 2;
+    let right_w = inner.saturating_sub(left_w + 1);
 
-    let model_line = if h.llm_ok {
-        if h.provider.is_empty() { h.model.to_string() } else { format!("{} · {}", h.model, h.provider) }
+    let sub_model = if h.llm_ok {
+        if h.provider.is_empty() {
+            h.model.to_string()
+        } else {
+            format!("{} - {}", h.model, h.provider)
+        }
     } else {
-        "not configured — run /llm".to_string()
+        "not configured - run /llm".to_string()
     };
 
-    let mut body: Vec<String> = Vec::new();
-    body.push(String::new());
-    body.push(format!("  {BOLD}{WHITE}Welcome back, {}!{RESET}", h.user));
-    body.push(String::new());
+    let status_llm = if h.llm_ok {
+        if h.provider.is_empty() {
+            h.model.to_string()
+        } else {
+            format!("{} ({})", h.provider, h.model)
+        }
+    } else {
+        "Not configured (/llm)".to_string()
+    };
+
+    let mut left_lines: Vec<String> = vec![
+        String::new(),
+        center_in(&format!("{BOLD}{WHITE}Welcome back, {}!{RESET}", h.user), left_w),
+        String::new(),
+    ];
     for line in LOGO {
-        body.push(format!("{}{ACCENT}{line}{RESET}", center_pad(w, LOGO_WIDTH)));
+        left_lines.push(center_in(&format!("{ACCENT}{line}{RESET}"), left_w));
     }
-    let subtitle = "Local AI Assistant";
-    body.push(format!("{}{DIM}{BOLD}{subtitle}{RESET}", center_pad(w, subtitle.chars().count())));
-    body.push(String::new());
-    body.push(format!("  {BOLD}{ACCENT}Status{RESET}"));
-    body.push(format!("  {} {DIM}Model {RESET} {model_line}", dot(h.llm_ok)));
-    body.push(format!(
-        "  {} {DIM}API   {RESET} {}",
-        dot(h.api_ok),
-        if h.api_ok { "Backend reachable" } else { "Backend offline — see ~/.husk/logs/backend.log" }
-    ));
-    body.push(format!(
-        "  {} {DIM}OAuth {RESET} {}",
-        dot(h.oauth_ok),
-        if h.oauth_ok { "Configured" } else { "Not configured" }
-    ));
-    body.push(format!("  {} {DIM}Store {RESET} Local SQLite (~/.husk/data)", dot(true)));
-    body.push(format!("  {DIM}Folder  {}{RESET}", h.cwd));
-    body.push(String::new());
-    body.push(format!("  {BOLD}{ACCENT}Tips{RESET}"));
-    body.push(format!("  {DIM}Type a message to chat · /help for commands · /exit to quit{RESET}"));
-    body.push(format!("  {DIM}/ui opens the web UI · /llm configures the model{RESET}"));
-    body.push(String::new());
+    left_lines.push(center_in(&format!("{BOLD}{DIM}Local AI Assistant{RESET}"), left_w));
+    left_lines.push(String::new());
+    left_lines.push(center_in(&format!("{DIM}{sub_model}{RESET}"), left_w));
+    left_lines.push(center_in(&format!("{DIM}{}{RESET}", h.cwd), left_w));
+    left_lines.push(String::new());
+
+    let right_lines: Vec<String> = vec![
+        String::new(),
+        format!("  {BOLD}{ACCENT}Tips for getting started{RESET}"),
+        format!("  {WHITE}Type a message to chat, or /help{RESET}"),
+        format!("  {WHITE}'/ui' command to start Web UI.{RESET}"),
+        String::new(),
+        String::new(),
+        format!("  {BOLD}{ACCENT}Quick status{RESET}"),
+        format!("  {} {WHITE}LLM    {status_llm}{RESET}", dot(h.llm_ok)),
+        format!(
+            "  {} {WHITE}OAuth  {}{RESET}",
+            dot(h.oauth_ok),
+            if h.oauth_ok { "Configured" } else { "Not configured" }
+        ),
+        format!("  {} {WHITE}Store  Local SQLite{RESET}", dot(true)),
+        String::new(),
+        String::new(),
+    ];
+
+    let rows = left_lines.len().max(right_lines.len());
+    let mut body = Vec::with_capacity(rows);
+    for i in 0..rows {
+        let l = left_lines.get(i).map(String::as_str).unwrap_or("");
+        let r = right_lines.get(i).map(String::as_str).unwrap_or("");
+        let sep = if i == 0 || i + 1 == rows {
+            " ".to_string()
+        } else {
+            format!("{ACCENT}│{RESET}")
+        };
+        body.push(format!("{}{}{}", pad_right(l, left_w), sep, pad_right(r, right_w)));
+    }
 
     let title = format!("{BOLD}Husk v{}{RESET}{ACCENT}", h.version);
     panel(&title, &body, w);
+    println!();
+    println!("  {DIM}/help for commands - Ctrl+C to exit{RESET}");
     println!();
 }
 
@@ -277,9 +331,9 @@ pub fn header(h: &HeaderInfo) {
 // Input / output
 // ---------------------------------------------------------------------------
 
-/// Reads one line. Returns `None` on EOF (Ctrl+Z/Ctrl+D) or a read error so the caller can exit
-/// cleanly instead of spinning on empty input.
 pub fn prompt_line() -> Option<String> {
+    let w = panel_width();
+    println!("{DIM}{}{RESET}", "-".repeat(w));
     print!("{BOLD}{ACCENT}❯{RESET} ");
     let _ = io::stdout().flush();
     let mut line = String::new();
@@ -288,12 +342,15 @@ pub fn prompt_line() -> Option<String> {
             println!();
             None
         }
-        Ok(_) => Some(line.trim().to_string()),
+        Ok(_) => {
+            println!("{DIM}{}{RESET}", "-".repeat(w));
+            Some(line.trim().to_string())
+        }
     }
 }
 
 pub fn ok(msg: &str) {
-    println!("{GREEN}✔{RESET} {msg}");
+    println!("{GREEN}+{RESET} {msg}");
 }
 
 pub fn warn(msg: &str) {
@@ -301,14 +358,13 @@ pub fn warn(msg: &str) {
 }
 
 pub fn err(msg: &str) {
-    println!("{RED}✘{RESET} {msg}");
+    println!("{RED}x{RESET} {msg}");
 }
 
 pub fn dim(msg: &str) {
     println!("{DIM}{msg}{RESET}");
 }
 
-/// Prints the assistant's reply, word-wrapped to the terminal and indented under a label.
 pub fn print_reply(reply: &str) {
     let width = term_width().saturating_sub(5).max(40);
     println!();
@@ -318,7 +374,6 @@ pub fn print_reply(reply: &str) {
     }
 }
 
-/// Animated "working" indicator shown while a blocking request runs.
 pub struct Spinner {
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
@@ -330,7 +385,7 @@ impl Spinner {
         let flag = Arc::clone(&stop);
         let label = label.to_string();
         let handle = thread::spawn(move || {
-            let frames = ["|", "/", "-", "\\"];
+            let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let started = Instant::now();
             let mut i = 0usize;
             while !flag.load(Ordering::Relaxed) {
@@ -342,12 +397,15 @@ impl Spinner {
                 );
                 let _ = io::stdout().flush();
                 i += 1;
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(Duration::from_millis(90));
             }
             print!("\r\x1b[2K");
             let _ = io::stdout().flush();
         });
-        Self { stop, handle: Some(handle) }
+        Self {
+            stop,
+            handle: Some(handle),
+        }
     }
 
     pub fn finish(mut self) {
@@ -360,7 +418,12 @@ impl Spinner {
 
 pub fn info_panel(title: &str, lines: &[&str]) {
     let w = panel_width();
-    let body: Vec<String> = lines.iter().map(|s| format!("  {s}")).collect();
+    let mut body: Vec<String> = Vec::with_capacity(lines.len() + 2);
+    body.push(String::new());
+    for s in lines {
+        body.push(format!("  {s}"));
+    }
+    body.push(String::new());
     let t = format!("{BOLD}{title}{RESET}{ACCENT}");
     panel(&t, &body, w);
 }
@@ -371,12 +434,13 @@ pub fn help_table() {
         ("/chat <msg>", "Send a message (plain text works too)"),
         ("/new", "Start a fresh conversation"),
         ("/llm", "Configure the LLM (synced to the shared backend DB)"),
+        ("/oauth", "Configure Google & Microsoft OAuth credentials"),
         ("/sync", "Pull the default model from the backend DB"),
         ("/ui", "Start the web UI and open it in your browser"),
-        ("/cli", "Stop the web UI only (backend stays running)"),
+        ("/cli", "Stop the web UI only (backend stays warm)"),
         ("/status", "Show model and service status"),
         ("/clear", "Clear the screen"),
-        ("/version", "Show the Husk version"),
+        ("/version", "Show the Husk version & check GitHub tag"),
         ("/exit", "Stop services and quit (also /quit, /q)"),
     ];
     let w = panel_width();
@@ -386,14 +450,18 @@ pub fn help_table() {
         body.push(format!("  {BOLD}{ACCENT}{cmd:<13}{RESET} {desc}"));
     }
     body.push(String::new());
-    body.push(format!("  {DIM}When the backend is up, chat uses the same models and DB as the web UI.{RESET}"));
-    body.push(String::new());
     let t = format!("{BOLD}Commands{RESET}{ACCENT}");
     panel(&t, &body, w);
 }
 
 pub fn status_table(provider: &str, endpoint: &str, model: &str, api: &str, ui: &str, conv: &str) {
-    let show = |v: &str| if v.is_empty() { "—".to_string() } else { v.to_string() };
+    let show = |v: &str| {
+        if v.is_empty() {
+            "—".to_string()
+        } else {
+            v.to_string()
+        }
+    };
     let w = panel_width();
     let body = vec![
         String::new(),

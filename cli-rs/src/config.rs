@@ -1,12 +1,19 @@
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
 pub fn home() -> PathBuf {
-    if let Some(p) = env::var_os("HUSK_HOME") { return PathBuf::from(p); }
-    env::var_os("USERPROFILE").or_else(|| env::var_os("HOME"))
-        .map(PathBuf::from).unwrap_or_else(|| PathBuf::from("." )).join(".husk")
+    if let Some(p) = env::var_os("HUSK_HOME") {
+        return PathBuf::from(p);
+    }
+    env::var_os("USERPROFILE")
+        .or_else(|| env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".husk")
 }
 
-pub fn env_path() -> PathBuf { home().join(".env") }
+pub fn env_path() -> PathBuf {
+    home().join(".env")
+}
 
 pub fn load() -> HashMap<String, String> {
     let mut c = HashMap::from([
@@ -14,15 +21,29 @@ pub fn load() -> HashMap<String, String> {
         ("LLM_ENDPOINT".into(), String::new()),
         ("LLM_MODEL".into(), String::new()),
         ("LLM_API_KEY".into(), String::new()),
+        ("GOOGLE_CLIENT_ID".into(), String::new()),
+        ("GOOGLE_CLIENT_SECRET".into(), String::new()),
+        ("MICROSOFT_CLIENT_ID".into(), String::new()),
+        ("MICROSOFT_CLIENT_SECRET".into(), String::new()),
+        ("MICROSOFT_TENANT".into(), "common".into()),
     ]);
     if let Ok(s) = fs::read_to_string(env_path()) {
         for line in s.lines() {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
                 let value = v.trim().trim_matches('"').trim_matches('\'').to_string();
-                c.insert(if key == "DEFAULT_LLM_KEY" { "LLM_API_KEY".into() } else { key }, value);
+                c.insert(
+                    if key == "DEFAULT_LLM_KEY" {
+                        "LLM_API_KEY".into()
+                    } else {
+                        key
+                    },
+                    value,
+                );
             }
         }
     }
@@ -38,13 +59,42 @@ pub fn save(c: &HashMap<String, String>) -> Result<(), String> {
     fs::create_dir_all(h.join("data")).map_err(|e| e.to_string())?;
     fs::create_dir_all(h.join("logs")).map_err(|e| e.to_string())?;
     let mut lines = Vec::new();
-    for key in ["LLM_PROVIDER", "LLM_ENDPOINT", "LLM_MODEL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_TENANT"] {
-        if let Some(v) = c.get(key) { lines.push(format!("{}=\"{}\"", key, v.replace('\\', "\\\\").replace('"', "\\\""))); }
+    for key in [
+        "LLM_PROVIDER",
+        "LLM_ENDPOINT",
+        "LLM_MODEL",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "MICROSOFT_CLIENT_ID",
+        "MICROSOFT_CLIENT_SECRET",
+        "MICROSOFT_TENANT",
+    ] {
+        if let Some(v) = c.get(key) {
+            lines.push(format!(
+                "{}=\"{}\"",
+                key,
+                v.replace('\\', "\\\\").replace('"', "\\\"")
+            ));
+        }
     }
-    if let Some(v) = c.get("LLM_API_KEY") { lines.push(format!("LLM_API_KEY=\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""))); }
-    lines.push(format!("DATABASE_URL=\"sqlite:///{}\"", h.join("data").join("husk.db").display()));
+    if let Some(v) = c.get("LLM_API_KEY") {
+        if !v.is_empty() {
+            lines.push(format!(
+                "LLM_API_KEY=\"{}\"",
+                v.replace('\\', "\\\\").replace('"', "\\\"")
+            ));
+        }
+    }
+    lines.push(format!(
+        "DATABASE_URL=\"sqlite:///{}\"",
+        h.join("data").join("husk.db").display()
+    ));
     lines.push("PORT=8000".into());
     fs::write(env_path(), lines.join("\n") + "\n").map_err(|e| e.to_string())?;
-    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; let _ = fs::set_permissions(env_path(), fs::Permissions::from_mode(0o600)); }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(env_path(), fs::Permissions::from_mode(0o600));
+    }
     Ok(())
 }

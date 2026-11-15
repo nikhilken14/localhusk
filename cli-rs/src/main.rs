@@ -4,14 +4,24 @@ mod services;
 mod ui;
 
 use services::Services;
-use std::{collections::HashMap, env, time::Duration};
+use std::{collections::HashMap, env, thread};
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn configure(cfg: &mut HashMap<String, String>, backend_base: &str) {
-    ui::info_panel("Configure LLM", &["Settings are saved locally and pushed to the shared backend model DB."]);
+fn normalize_tag(tag: &str) -> String {
+    tag.trim().trim_start_matches(['v', 'V']).to_string()
+}
+
+fn configure_llm(cfg: &mut HashMap<String, String>, services: &mut Services) {
+    ui::info_panel(
+        "Configure LLM",
+        &["Settings are saved locally (~/.husk/.env) and synced to the shared backend DB."],
+    );
     println!();
-    let provider = ui::ask("Provider (openai/ollama/anthropic/google)", config::get(cfg, "LLM_PROVIDER"));
+    let provider = ui::ask(
+        "Provider (openai/ollama/anthropic/google)",
+        config::get(cfg, "LLM_PROVIDER"),
+    );
     cfg.insert("LLM_PROVIDER".into(), provider);
     let endpoint = ui::ask("Endpoint URL", config::get(cfg, "LLM_ENDPOINT"));
     cfg.insert("LLM_ENDPOINT".into(), endpoint);
@@ -30,15 +40,45 @@ fn configure(cfg: &mut HashMap<String, String>, backend_base: &str) {
         Ok(()) => ui::ok(&format!("Local config saved to {}", config::env_path().display())),
         Err(e) => ui::err(&format!("Could not save config: {e}")),
     }
-    if !backend_base.is_empty() {
-        match chat::push_to_backend(cfg, backend_base) {
+
+    if !services.backend_url.is_empty() || services.ensure_backend().is_ok() {
+        match chat::push_to_backend(cfg, &services.backend_url) {
             Ok(msg) => ui::ok(&msg),
             Err(e) => ui::warn(&format!("Could not sync model to backend: {e}")),
         }
     }
 }
 
-/// Shorten a long path from the left so it cannot overflow the header panel.
+fn configure_oauth(cfg: &mut HashMap<String, String>) {
+    ui::info_panel(
+        "Configure OAuth",
+        &["Optional credentials for Google and Microsoft mail/calendar integrations."],
+    );
+    println!();
+    let g_id = ui::ask("Google Client ID", config::get(cfg, "GOOGLE_CLIENT_ID"));
+    cfg.insert("GOOGLE_CLIENT_ID".into(), g_id.clone());
+    if !g_id.is_empty() {
+        let g_sec = ui::ask("Google Client Secret", "");
+        if !g_sec.is_empty() {
+            cfg.insert("GOOGLE_CLIENT_SECRET".into(), g_sec);
+        }
+    }
+    let m_id = ui::ask("Microsoft Client ID", config::get(cfg, "MICROSOFT_CLIENT_ID"));
+    cfg.insert("MICROSOFT_CLIENT_ID".into(), m_id.clone());
+    if !m_id.is_empty() {
+        let m_sec = ui::ask("Microsoft Client Secret (optional w/ PKCE)", "");
+        if !m_sec.is_empty() {
+            cfg.insert("MICROSOFT_CLIENT_SECRET".into(), m_sec);
+        }
+        let tenant = ui::ask("Microsoft Tenant", config::get(cfg, "MICROSOFT_TENANT"));
+        cfg.insert("MICROSOFT_TENANT".into(), tenant);
+    }
+    match config::save(cfg) {
+        Ok(()) => ui::ok("OAuth credentials saved"),
+        Err(e) => ui::err(&format!("Could not save credentials: {e}")),
+    }
+}
+
 fn shorten(s: &str, max: usize) -> String {
     let count = s.chars().count();
     if count <= max {
@@ -48,7 +88,6 @@ fn shorten(s: &str, max: usize) -> String {
     format!("…{tail}")
 }
 
-/// One chat round-trip with a spinner while the model thinks.
 fn chat_turn(
     cfg: &HashMap<String, String>,
     history: &mut Vec<(String, String)>,
@@ -56,7 +95,7 @@ fn chat_turn(
     backend_url: &str,
     conversation_id: &mut Option<String>,
 ) {
-    let spinner = ui::Spinner::start("thinking");
+    let spinner = ui::Spinner::start("Thinking...");
     let result = chat::send(cfg, history, message, backend_url, conversation_id);
     spinner.finish();
     match result {
@@ -66,15 +105,14 @@ fn chat_turn(
 }
 
 fn main() {
-    // Quick checks that must not start the backend: `husk --version` / `husk --help`.
     if let Some(arg) = env::args().nth(1) {
         match arg.as_str() {
             "--version" | "-V" | "version" => {
-                println!("husk {VERSION}");
+                println!("husk {PKG_VERSION}");
                 return;
             }
             "--help" | "-h" => {
-                println!("husk {VERSION} - LocalHusk local AI assistant\n\nUsage: husk [--version | --help]\n\nRun `husk` with no arguments to start the interactive CLI (type /help inside).");
+                println!("husk {PKG_VERSION} - LocalHusk local AI assistant\n\nUsage: husk [--version | --help]\n\nRun `husk` with no arguments to start the interactive CLI (type /help inside).");
                 return;
             }
             _ => {}
@@ -86,6 +124,17 @@ fn main() {
 
     let mut cfg = config::load();
     let _ = std::fs::create_dir_all(config::home().join("logs"));
+
+    // Reuse an already-running backend silently if present, otherwise stay fast and lazy like husk.py.
+    let mut services = Services::new();
+    if Services::healthy("http://127.0.0.1:8000") {
+        // ensure_backend marks it as external when we did not start the child.
+        let _ = services.ensure_backend();
+        let _ = chat::sync_from_backend(&mut cfg, &services.backend_url);
+    }
+
+    // Check GitHub release tag in background so startup is instantaneous.
+    let tag_handle = thread::spawn(|| chat::fetch_latest_github_tag());
 
     let user = env::var("USER")
         .or_else(|_| env::var("USERNAME"))
@@ -102,59 +151,36 @@ fn main() {
         })
         .unwrap_or_else(|_| ".".into());
 
-    // Start the backend and wait (bounded) for it to answer, with a spinner instead of a dead pause.
-    let mut services = Services::new();
-    let mut startup_note: Option<String> = None;
-    let spinner = ui::Spinner::start("starting backend");
-    let backend_ready = match services.start_backend() {
-        Ok(()) => match services.wait_backend_ready(Duration::from_secs(20)) {
-            Ok(()) => true,
-            Err(e) => {
-                startup_note = Some(e);
-                false
-            }
-        },
-        Err(e) => {
-            startup_note = Some(format!("Backend could not be launched: {e}"));
-            false
-        }
-    };
-    if backend_ready {
-        if chat::sync_from_backend(&mut cfg, &services.backend_url).is_err() {
-            let _ = chat::push_to_backend(&cfg, &services.backend_url);
-        }
-    }
-    spinner.finish();
-
-    let llm_ok = !config::get(&cfg, "LLM_MODEL").is_empty() && !config::get(&cfg, "LLM_ENDPOINT").is_empty();
+    let llm_ok = !config::get(&cfg, "LLM_MODEL").is_empty()
+        && !config::get(&cfg, "LLM_ENDPOINT").is_empty();
     let oauth_ok = !config::get(&cfg, "GOOGLE_CLIENT_ID").is_empty()
         || !config::get(&cfg, "MICROSOFT_CLIENT_ID").is_empty();
 
+    ui::clear_screen();
     ui::header(&ui::HeaderInfo {
-        version: VERSION,
+        version: PKG_VERSION,
         user: &user,
         provider: config::get(&cfg, "LLM_PROVIDER"),
         model: config::get(&cfg, "LLM_MODEL"),
-        cwd: &shorten(&cwd, 60),
+        cwd: &shorten(&cwd, 44),
         llm_ok,
         oauth_ok,
-        api_ok: backend_ready,
     });
 
-    if let Some(note) = startup_note {
-        ui::warn(&note);
-        println!();
-    }
-    if config::get(&cfg, "LLM_ENDPOINT").is_empty() {
-        ui::warn("No LLM endpoint yet — run /llm to configure.");
-        println!();
+    if let Ok(Some(latest_tag)) = tag_handle.join() {
+        let latest_clean = normalize_tag(&latest_tag);
+        if !latest_clean.is_empty() && latest_clean != normalize_tag(PKG_VERSION) {
+            ui::warn(&format!(
+                "New GitHub release available: v{latest_clean} (current: v{PKG_VERSION})"
+            ));
+            println!();
+        }
     }
 
     let mut history: Vec<(String, String)> = Vec::new();
     let mut conversation_id: Option<String> = None;
 
     loop {
-        // EOF (Ctrl+Z / Ctrl+D) ends the session just like /exit.
         let Some(line) = ui::prompt_line() else {
             break;
         };
@@ -166,14 +192,19 @@ fn main() {
             break;
         }
 
-        // Split "/cmd rest of line" into the command and its argument.
         let (cmd, arg) = match line.split_once(char::is_whitespace) {
             Some((c, a)) => (c.to_lowercase(), a.trim().to_string()),
             None => (lower.clone(), String::new()),
         };
 
         if !line.starts_with('/') {
-            chat_turn(&cfg, &mut history, &line, &services.backend_url, &mut conversation_id);
+            chat_turn(
+                &cfg,
+                &mut history,
+                &line,
+                &services.backend_url,
+                &mut conversation_id,
+            );
         } else {
             match cmd.as_str() {
                 "/help" | "/?" => ui::help_table(),
@@ -181,31 +212,51 @@ fn main() {
                     if arg.is_empty() {
                         ui::warn("Usage: /chat <message>");
                     } else {
-                        chat_turn(&cfg, &mut history, &arg, &services.backend_url, &mut conversation_id);
+                        chat_turn(
+                            &cfg,
+                            &mut history,
+                            &arg,
+                            &services.backend_url,
+                            &mut conversation_id,
+                        );
                     }
                 }
-                "/llm" => configure(&mut cfg, &services.backend_url),
-                "/sync" => match chat::sync_from_backend(&mut cfg, &services.backend_url) {
-                    Ok(()) => ui::ok(&format!(
-                        "Pulled default model: {} | {}",
-                        config::get(&cfg, "LLM_PROVIDER"),
-                        config::get(&cfg, "LLM_MODEL")
-                    )),
-                    Err(e) => ui::err(&format!("Sync failed: {e}")),
-                },
+                "/llm" => configure_llm(&mut cfg, &mut services),
+                "/oauth" => configure_oauth(&mut cfg),
+                "/sync" => {
+                    let spinner = ui::Spinner::start("Syncing default model...");
+                    let ready = services.ensure_backend();
+                    spinner.finish();
+                    match ready {
+                        Ok(url) => match chat::sync_from_backend(&mut cfg, &url) {
+                            Ok(()) => {
+                                let _ = config::save(&cfg);
+                                ui::ok(&format!(
+                                    "Pulled default model: {} | {}",
+                                    config::get(&cfg, "LLM_PROVIDER"),
+                                    config::get(&cfg, "LLM_MODEL")
+                                ));
+                            }
+                            Err(e) => ui::err(&format!("Sync failed: {e}")),
+                        },
+                        Err(e) => ui::err(&format!("Backend unavailable: {e}")),
+                    }
+                }
                 "/ui" => {
-                    let spinner = ui::Spinner::start("starting web UI");
+                    let spinner = ui::Spinner::start("Starting web UI...");
                     let started = services.start_ui();
                     spinner.finish();
                     match started {
                         Ok(()) => {
-                            ui::ok("Web UI started");
+                            // Single unified panel (no duplicate raw URL lines above it).
                             ui::info_panel(
                                 "Husk is running",
                                 &[
-                                    &format!("Web UI  {}", services.frontend_url),
-                                    &format!("API     {}", services.backend_url),
-                                    &format!("Docs    {}/docs", services.backend_url),
+                                    &format!("Web UI   {}", services.frontend_url),
+                                    &format!("API      {}", services.backend_url),
+                                    &format!("Docs     {}/docs", services.backend_url),
+                                    "",
+                                    "Keep chatting here; /cli stops only the UI (backend stays warm). /exit quits everything.",
                                 ],
                             );
                             services::open_url(&services.frontend_url);
@@ -215,9 +266,9 @@ fn main() {
                 }
                 "/cli" => {
                     if services.stop_ui() {
-                        ui::ok("Web UI stopped. Continuing in the terminal.");
+                        ui::ok("Web UI stopped. Backend remains warm. Continuing in the terminal.");
                     } else {
-                        ui::dim("The web UI is not running.");
+                        ui::dim("Web UI isn't running. You're already in the terminal.");
                     }
                 }
                 "/new" => {
@@ -225,23 +276,54 @@ fn main() {
                     conversation_id = None;
                     ui::ok("Started a new conversation");
                 }
-                "/clear" | "/cls" => ui::clear_screen(),
-                "/version" | "/v" => ui::dim(&format!("Husk v{VERSION}")),
-                "/status" => ui::status_table(
-                    config::get(&cfg, "LLM_PROVIDER"),
-                    config::get(&cfg, "LLM_ENDPOINT"),
-                    config::get(&cfg, "LLM_MODEL"),
-                    if services.backend_url.is_empty() { "stopped" } else { &services.backend_url },
-                    if services.frontend_url.is_empty() { "stopped" } else { &services.frontend_url },
-                    conversation_id.as_deref().unwrap_or("(new)"),
-                ),
+                "/clear" | "/cls" => {
+                    ui::clear_screen();
+                    let llm_ok = !config::get(&cfg, "LLM_MODEL").is_empty()
+                        && !config::get(&cfg, "LLM_ENDPOINT").is_empty();
+                    let oauth_ok = !config::get(&cfg, "GOOGLE_CLIENT_ID").is_empty()
+                        || !config::get(&cfg, "MICROSOFT_CLIENT_ID").is_empty();
+                    ui::header(&ui::HeaderInfo {
+                        version: PKG_VERSION,
+                        user: &user,
+                        provider: config::get(&cfg, "LLM_PROVIDER"),
+                        model: config::get(&cfg, "LLM_MODEL"),
+                        cwd: &shorten(&cwd, 44),
+                        llm_ok,
+                        oauth_ok,
+                    });
+                }
+                "/version" | "/v" => {
+                    let latest = chat::fetch_latest_github_tag()
+                        .map(|t| format!(" (GitHub latest: v{})", normalize_tag(&t)))
+                        .unwrap_or_default();
+                    ui::dim(&format!("Husk v{PKG_VERSION}{latest}"));
+                }
+                "/status" => {
+                    let api_status = if services.is_backend_running() {
+                        services.backend_url.as_str()
+                    } else {
+                        "off (starts on /ui)"
+                    };
+                    let ui_status = if services.is_frontend_running() {
+                        services.frontend_url.as_str()
+                    } else {
+                        "off"
+                    };
+                    ui::status_table(
+                        config::get(&cfg, "LLM_PROVIDER"),
+                        config::get(&cfg, "LLM_ENDPOINT"),
+                        config::get(&cfg, "LLM_MODEL"),
+                        api_status,
+                        ui_status,
+                        conversation_id.as_deref().unwrap_or("(new)"),
+                    );
+                }
                 _ => ui::err(&format!("Unknown command {cmd}. Try /help")),
             }
         }
         println!();
     }
 
-    // Shut down and say exactly what happened, so /exit never looks like it silently did nothing.
     ui::dim("Stopping services...");
     let report = services.stop_all();
     if report.ui_stopped {

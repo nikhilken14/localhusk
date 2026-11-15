@@ -9,16 +9,14 @@ use std::{
 };
 use crate::config;
 
-// PIDs of the child processes we own. Kept in statics so the Windows console-control handler
-// (Ctrl+C / closing the window), which runs on its own thread, can still shut them down.
 static BACKEND_PID: AtomicU32 = AtomicU32::new(0);
 static FRONTEND_PID: AtomicU32 = AtomicU32::new(0);
 
-/// Result of shutting everything down, so the caller can tell the person what actually happened.
+/// Result of shutting everything down, so the caller can tell the user what actually happened.
 pub struct StopReport {
     pub ui_stopped: bool,
     pub backend_stopped: bool,
-    /// The backend was already running when Husk started, so Husk does not own it.
+    /// True when a backend that was already running (not started by this process) was left alone.
     pub backend_left_running: bool,
 }
 
@@ -33,8 +31,6 @@ fn kill_tree(pid: u32) {
 
 #[cfg(windows)]
 unsafe extern "system" fn console_ctrl_handler(_event: u32) -> i32 {
-    // Ctrl+C, Ctrl+Break or the console window closing: take the child processes down with us,
-    // then return 0 so the default handler still terminates Husk.
     for slot in [&FRONTEND_PID, &BACKEND_PID] {
         let pid = slot.swap(0, Ordering::SeqCst);
         if pid != 0 {
@@ -44,13 +40,14 @@ unsafe extern "system" fn console_ctrl_handler(_event: u32) -> i32 {
     0
 }
 
-/// Make sure Ctrl+C / closing the window does not leave uvicorn or Vite running in the background.
-/// (On Unix the children share the terminal's process group and receive the signal themselves.)
 pub fn install_ctrl_handler() {
     #[cfg(windows)]
     {
         extern "system" {
-            fn SetConsoleCtrlHandler(handler: Option<unsafe extern "system" fn(u32) -> i32>, add: i32) -> i32;
+            fn SetConsoleCtrlHandler(
+                handler: Option<unsafe extern "system" fn(u32) -> i32>,
+                add: i32,
+            ) -> i32;
         }
         unsafe {
             SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
@@ -58,14 +55,25 @@ pub fn install_ctrl_handler() {
     }
 }
 
-/// Open a URL in the default browser (best effort).
 pub fn open_url(url: &str) {
     #[cfg(windows)]
-    let result = Command::new("cmd").args(["/C", "start", "", url]).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let result = Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
     #[cfg(target_os = "macos")]
-    let result = Command::new("open").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let result = Command::new("open")
+        .arg(url)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
     #[cfg(all(not(windows), not(target_os = "macos")))]
-    let result = Command::new("xdg-open").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let result = Command::new("xdg-open")
+        .arg(url)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
     let _ = result;
 }
 
@@ -89,21 +97,38 @@ impl Services {
         }
     }
 
-    /// Prefer installed copy under HUSK_HOME, then paths relative to the running binary / cwd.
+    pub fn is_backend_running(&mut self) -> bool {
+        if let Some(child) = self.backend.as_mut() {
+            if child.try_wait().ok().flatten().is_none() {
+                return true;
+            }
+            self.backend = None;
+            BACKEND_PID.store(0, Ordering::SeqCst);
+        }
+        !self.backend_url.is_empty() && Self::healthy(&self.backend_url)
+    }
+
+    pub fn is_frontend_running(&mut self) -> bool {
+        if let Some(child) = self.frontend.as_mut() {
+            if child.try_wait().ok().flatten().is_none() && !self.frontend_url.is_empty() {
+                return true;
+            }
+            self.frontend = None;
+            FRONTEND_PID.store(0, Ordering::SeqCst);
+        }
+        false
+    }
+
     fn project_dir(name: &str) -> Option<PathBuf> {
         let home = config::home();
         if home.join(name).is_dir() {
             return Some(home.join(name));
         }
         let exe = env::current_exe().ok()?;
-        let mut bases = vec![
-            exe.parent()?.to_path_buf(),
-            env::current_dir().ok()?,
-        ];
+        let mut bases = vec![exe.parent()?.to_path_buf(), env::current_dir().ok()?];
         if let Some(p) = exe.parent().and_then(|p| p.parent()) {
             bases.push(p.to_path_buf());
         }
-        // Also walk up a few levels from cwd (useful when running from a checkout)
         if let Ok(cwd) = env::current_dir() {
             let mut cur = cwd;
             for _ in 0..4 {
@@ -173,7 +198,7 @@ impl Services {
             .unwrap_or(preferred)
     }
 
-    fn healthy(url: &str) -> bool {
+    pub fn healthy(url: &str) -> bool {
         let target = format!("{}/api/v1/health", url.trim_end_matches('/'));
         Command::new("curl")
             .args(["-fsS", "--max-time", "2", &target])
@@ -195,36 +220,34 @@ impl Services {
         }
     }
 
-    /// Spawn Uvicorn and return immediately. Readiness is checked only when /ui is requested.
-    pub fn start_backend(&mut self) -> Result<(), String> {
+    /// Ensure the backend is running (reusing an existing instance or starting a managed child).
+    pub fn ensure_backend(&mut self) -> Result<String, String> {
         let standard_url = "http://127.0.0.1:8000";
         if Self::healthy(standard_url) {
             self.backend_url = standard_url.into();
-            self.backend_external = true;
-            return Ok(());
+            // Only mark external if we never started a child ourselves.
+            if self.backend.is_none() {
+                self.backend_external = true;
+            }
+            return Ok(self.backend_url.clone());
         }
 
         if let Some(child) = self.backend.as_mut() {
             if child.try_wait().ok().flatten().is_none() && !self.backend_url.is_empty() {
-                return Ok(());
+                return Ok(self.backend_url.clone());
             }
         }
 
-        let backend = Self::project_dir("husk")
-            .ok_or_else(|| {
-                format!(
-                    "Could not find the husk/ backend directory.\n\
-                     Expected under {}/husk or next to the husk binary.\n\
-                     Re-run the installer from a full release archive.",
-                    config::home().display()
-                )
-            })?;
+        let backend = Self::project_dir("husk").ok_or_else(|| {
+            format!(
+                "Could not find the husk/ backend directory under {} or next to the husk binary.",
+                config::home().display()
+            )
+        })?;
 
         let py = Self::python(&backend).ok_or_else(|| {
             format!(
-                "Python environment with FastAPI and Uvicorn not found.\n\
-                 Run the Husk installer first, or create a venv at {}/venv and:\n\
-                   pip install fastapi uvicorn",
+                "Python environment with FastAPI and Uvicorn not found (checked {}/venv).",
                 config::home().display()
             )
         })?;
@@ -243,7 +266,6 @@ impl Services {
         let log_path = home.join("logs/backend.log");
         let log = File::create(&log_path).map_err(|e| e.to_string())?;
 
-        // Ensure the package under husk/src is importable.
         let src_dir = backend.join("src");
         let mut pythonpath = src_dir.display().to_string();
         if let Ok(existing) = env::var("PYTHONPATH") {
@@ -276,7 +298,6 @@ impl Services {
             .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
             .stderr(Stdio::from(log));
 
-        // Load any .env values into the child (uvicorn / app may read them).
         if let Ok(env_text) = fs::read_to_string(config::env_path()) {
             for line in env_text.lines() {
                 let line = line.trim();
@@ -305,27 +326,10 @@ impl Services {
             BACKEND_PID.store(child.id(), Ordering::SeqCst);
         }
 
-        // Quick sanity: if the process dies within ~1.5s, surface the log tail.
-        thread::sleep(Duration::from_millis(1500));
-        if let Some(child) = self.backend.as_mut() {
-            if let Ok(Some(status)) = child.try_wait() {
-                let tail = Self::tail_log(&log_path, 20);
-                self.backend_url.clear();
-                self.backend = None;
-                BACKEND_PID.store(0, Ordering::SeqCst);
-                return Err(format!(
-                    "Backend exited immediately ({status}).\n\
-                     Log: {}\n\
-                     ---- last lines ----\n{tail}",
-                    log_path.display()
-                ));
-            }
-        }
-
-        Ok(())
+        self.wait_backend_ready(Duration::from_secs(30))?;
+        Ok(self.backend_url.clone())
     }
 
-    /// Wait for the background backend when a feature actually needs the API.
     pub fn wait_backend_ready(&mut self, timeout: Duration) -> Result<(), String> {
         let until = Instant::now() + timeout;
         let log_path = config::home().join("logs/backend.log");
@@ -336,39 +340,29 @@ impl Services {
             if let Some(child) = self.backend.as_mut() {
                 if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                     let tail = Self::tail_log(&log_path, 25);
+                    self.backend = None;
+                    BACKEND_PID.store(0, Ordering::SeqCst);
+                    self.backend_url.clear();
                     return Err(format!(
-                        "Backend exited before becoming healthy ({status}).\n\
-                         Check {}.\n\
-                         ---- last lines ----\n{tail}",
+                        "Backend exited before becoming healthy ({status}).\nCheck {}.\n---- last lines ----\n{tail}",
                         log_path.display()
                     ));
                 }
             }
-            thread::sleep(Duration::from_millis(400));
+            thread::sleep(Duration::from_millis(300));
         }
         let tail = Self::tail_log(&log_path, 25);
         Err(format!(
-            "Backend is still not healthy after {}s.\n\
-             Check {}.\n\
-             ---- last lines ----\n{tail}",
+            "Backend did not become healthy within {}s.\nCheck {}.\n---- last lines ----\n{tail}",
             timeout.as_secs(),
             log_path.display()
         ))
     }
 
     pub fn start_ui(&mut self) -> Result<(), String> {
-        if self.backend_url.is_empty() {
-            self.start_backend()?;
-        }
-        self.wait_backend_ready(Duration::from_secs(45))?;
+        self.ensure_backend()?;
 
-        if self
-            .frontend
-            .as_mut()
-            .and_then(|p| p.try_wait().ok().flatten())
-            .is_none()
-            && !self.frontend_url.is_empty()
-        {
+        if self.is_frontend_running() {
             return Ok(());
         }
 
@@ -430,23 +424,22 @@ impl Services {
             FRONTEND_PID.store(child.id(), Ordering::SeqCst);
         }
 
-        thread::sleep(Duration::from_secs(2));
-        if self
-            .frontend
-            .as_mut()
-            .and_then(|p| p.try_wait().ok().flatten())
-            .is_some()
-        {
-            let tail = Self::tail_log(&log_path, 20);
-            return Err(format!(
-                "Frontend exited early. Check {}.\n---- last lines ----\n{tail}",
-                log_path.display()
-            ));
+        thread::sleep(Duration::from_millis(1800));
+        if let Some(child) = self.frontend.as_mut() {
+            if let Ok(Some(status)) = child.try_wait() {
+                let tail = Self::tail_log(&log_path, 20);
+                self.frontend = None;
+                FRONTEND_PID.store(0, Ordering::SeqCst);
+                self.frontend_url.clear();
+                return Err(format!(
+                    "Frontend exited early ({status}). Check {}.\n---- last lines ----\n{tail}",
+                    log_path.display()
+                ));
+            }
         }
         Ok(())
     }
 
-    /// Stop the web UI only. Returns true if it was running.
     pub fn stop_ui(&mut self) -> bool {
         let was_running = self.frontend.is_some();
         stop_child(&mut self.frontend);
@@ -455,16 +448,24 @@ impl Services {
         was_running
     }
 
-    /// Stop everything Husk started. A backend that was already running before Husk launched is
-    /// left alone (Husk does not own it) and reported as such.
+    /// Stop only the child processes that Husk spawned during this session.
+    /// An already-running external backend is left alone.
     pub fn stop_all(&mut self) -> StopReport {
         let ui_stopped = self.stop_ui();
         let backend_stopped = self.backend.is_some();
+        let backend_left_running = self.backend_external && !backend_stopped;
         stop_child(&mut self.backend);
         BACKEND_PID.store(0, Ordering::SeqCst);
-        let backend_left_running = self.backend_external && !self.backend_url.is_empty();
-        self.backend_url.clear();
-        StopReport { ui_stopped, backend_stopped, backend_left_running }
+        // Keep the URL if we left an external backend running so callers can still report it.
+        if !backend_left_running {
+            self.backend_url.clear();
+        }
+        self.backend_external = false;
+        StopReport {
+            ui_stopped,
+            backend_stopped,
+            backend_left_running,
+        }
     }
 }
 
@@ -478,7 +479,7 @@ impl Drop for Services {
 fn stop_child(child: &mut Option<Child>) {
     if let Some(mut p) = child.take() {
         kill_tree(p.id());
-        let _ = p.kill(); // fallback if taskkill is unavailable
+        let _ = p.kill();
         let _ = p.wait();
     }
 }
