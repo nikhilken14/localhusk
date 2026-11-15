@@ -85,5 +85,7 @@ export async function streamMessage(
     }
   } finally {
     reader.releaseLock();
+    // Tell the topbar to refresh the model label and today's token counters right away.
+    window.dispatchEvent(new Event("husk:usage"));
   }
 }

@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `/exit`, Ctrl+C, EOF and closing the window now reliably stop the backend and web UI that Husk started, and `/exit` reports what it stopped.
 - CLI: EOF on stdin no longer loops forever on empty input.
 - CLI: replies containing non-ASCII text or `\uXXXX` escapes are decoded correctly, and slicing the model list can no longer panic on multi-byte characters.
+- Web UI: the topbar model label and token counters now refresh right after a chat reply and after any model change (the `husk:usage` event was listened for but never sent), and it distinguishes "No default model" from "No model connected".
+- CLI: panels and replies use the full terminal width.
 - Web UI: `NoteDetailPage` accepts the `notify` prop passed by `App.tsx` (fixes the TypeScript build error).
 - Backend: migration `0009` creates the `chat_attachments` foreign keys that the ORM model declares.
 - Tests: updated for local-only calendar, removed task time filters, and the current agent/automation behaviour; migration tests follow the Alembic head revision.

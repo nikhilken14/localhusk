@@ -116,6 +116,12 @@ pub fn term_width() -> usize {
     80
 }
 
+/// Width for panels: the full terminal minus one column (writing into the last column makes
+/// some consoles wrap and break the right border).
+pub fn panel_width() -> usize {
+    term_width().saturating_sub(1).max(50)
+}
+
 pub fn clear_screen() {
     print!("\x1b[2J\x1b[H");
     let _ = io::stdout().flush();
@@ -223,7 +229,7 @@ pub struct HeaderInfo<'a> {
 }
 
 pub fn header(h: &HeaderInfo) {
-    let w = term_width().min(100).max(60);
+    let w = panel_width().max(60);
     clear_screen();
 
     let model_line = if h.llm_ok {
@@ -304,7 +310,7 @@ pub fn dim(msg: &str) {
 
 /// Prints the assistant's reply, word-wrapped to the terminal and indented under a label.
 pub fn print_reply(reply: &str) {
-    let width = term_width().min(100).saturating_sub(4).max(40);
+    let width = term_width().saturating_sub(5).max(40);
     println!();
     println!("  {BOLD}{ACCENT}Husk{RESET}");
     for line in wrap(reply.trim_end(), width) {
@@ -353,7 +359,7 @@ impl Spinner {
 }
 
 pub fn info_panel(title: &str, lines: &[&str]) {
-    let w = term_width().min(88).max(50);
+    let w = panel_width();
     let body: Vec<String> = lines.iter().map(|s| format!("  {s}")).collect();
     let t = format!("{BOLD}{title}{RESET}{ACCENT}");
     panel(&t, &body, w);
@@ -373,7 +379,7 @@ pub fn help_table() {
         ("/version", "Show the Husk version"),
         ("/exit", "Stop services and quit (also /quit, /q)"),
     ];
-    let w = term_width().min(78).max(50);
+    let w = panel_width();
     let mut body = Vec::new();
     body.push(String::new());
     for (cmd, desc) in rows {
@@ -388,7 +394,7 @@ pub fn help_table() {
 
 pub fn status_table(provider: &str, endpoint: &str, model: &str, api: &str, ui: &str, conv: &str) {
     let show = |v: &str| if v.is_empty() { "—".to_string() } else { v.to_string() };
-    let w = term_width().min(78).max(50);
+    let w = panel_width();
     let body = vec![
         String::new(),
         format!("  {DIM}Provider    {RESET} {}", show(provider)),

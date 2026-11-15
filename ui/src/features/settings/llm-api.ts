@@ -53,6 +53,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     const d = body.detail;
     throw new Error((Array.isArray(d) ? d.map((e: any) => e.msg).join("; ") : d) ?? r.statusText);
   }
+  // Any model change (add / edit / delete / set default / test) should refresh the topbar status.
+  if (init?.method && init.method.toUpperCase() !== "GET") window.dispatchEvent(new Event("husk:usage"));
   return r.status === 204 ? (undefined as T) : r.json();
 }
 

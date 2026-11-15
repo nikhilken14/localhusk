@@ -92,7 +92,9 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             source "$HOME/.cargo/env"
           fi
-          cd cli-rs && cargo build --release && strip target/release/husk || true
+          # Subshell: keep the repo root as the working directory for the lines below.
+          (cd cli-rs && cargo build --release)
+          strip cli-rs/target/release/husk || true
           mkdir -p builds/linux
           cp cli-rs/target/release/husk builds/linux/husk
           chmod +x builds/linux/husk install.sh

@@ -15,9 +15,9 @@ import { useCallback, useEffect, useState } from "react";
  *    dispatches `window.dispatchEvent(new Event("husk:usage"))` (e.g. ChatPage after a reply)
  *
  */
-export type TokenUsage = { connected: boolean; input: number; output: number; model: string | null };
+export type TokenUsage = { connected: boolean; hasModels: boolean; input: number; output: number; model: string | null };
 
-const ZERO: TokenUsage = { connected: false, input: 0, output: 0, model: null };
+const ZERO: TokenUsage = { connected: false, hasModels: false, input: 0, output: 0, model: null };
 const BASE = API_BASE_URL;
 
 const localMidnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
@@ -30,6 +30,7 @@ async function fetchUsage(): Promise<TokenUsage> {
   const connected = Boolean(defaultModel);
   return {
     connected,
+    hasModels: Array.isArray(j.models) && j.models.length > 0,
     input: Number(j.input_tokens) || 0,
     output: Number(j.output_tokens) || 0,
     model: defaultModel ? `${defaultModel.name ?? defaultModel.kind ?? "Model"} / ${defaultModel.model ?? "default"}` : null,
