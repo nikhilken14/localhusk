@@ -1,13 +1,11 @@
 # LocalHusk installer for Windows PowerShell. Installs per-user; no admin rights required.
 #
-# Usage:
-#   .\install.ps1
-#   $env:HUSK_RELEASE_URL = "https://github.com/nikhilken14/localhusk/archive/refs/heads/main.zip"; irm $url | iex   (or run this script after download)
-#   $env:HUSK_GITHUB = "owner/repo"; .\install.ps1
+# One-line installs use main branch source by default. Set HUSK_PREFER_RELEASE=1 to
+# prefer the latest CI-built Release ZIP, or HUSK_RELEASE_URL to use an exact URL.
 #
 $ErrorActionPreference = "Stop"
 
-# Default repo for irm|iex installs (override with HUSK_GITHUB / HUSK_RELEASE_URL).
+# Default repository for one-line source/release downloads.
 $HuskDefaultGithub = if ($env:HUSK_DEFAULT_GITHUB) { $env:HUSK_DEFAULT_GITHUB } else { "nikhilken14/localhusk" }
 
 
@@ -58,19 +56,21 @@ function Download-Release([string]$url) {
 
 try {
     if ($ReleaseUrl) {
+        # Explicit URL is authoritative; a failed download must fail the installation.
         Download-Release $ReleaseUrl
     } elseif (-not $Src -or (-not (Test-Path (Join-Path $Src "husk.py")) -and -not (Test-Path (Join-Path $Src "husk")))) {
-         $gh = if ($env:HUSK_GITHUB) { $env:HUSK_GITHUB } else { $HuskDefaultGithub }
-        if ($gh) {
+        $gh = if ($env:HUSK_GITHUB) { $env:HUSK_GITHUB } else { $HuskDefaultGithub }
+        if ($env:HUSK_PREFER_RELEASE -eq "1") {
             $latest = Get-LatestReleaseUrl $gh "localhusk-*-windows-x86_64.zip"
             if ($latest) {
                 Download-Release $latest
             } else {
-                Warn "No published release found; installing from the main branch (its bundled launcher may be outdated)."
+                Warn "No Windows x86_64 release asset found; falling back to main branch source."
                 Download-Release "https://github.com/$gh/archive/refs/heads/main.zip"
             }
         } else {
-            throw "Run install.ps1 from an extracted LocalHusk release, or set HUSK_RELEASE_URL / HUSK_GITHUB."
+            Say "Installing from the main branch source (default)."
+            Download-Release "https://github.com/$gh/archive/refs/heads/main.zip"
         }
     }
 

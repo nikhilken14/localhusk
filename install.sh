@@ -5,10 +5,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.sh | bash
 #   ./install.sh                          # from extracted release / clone
 #
-# Default repo for curl|bash installs (override with HUSK_GITHUB / HUSK_RELEASE_URL).
-#   curl -fsSL <raw-or-release-url>/install.sh | bash
-#   HUSK_RELEASE_URL=https://github.com/nikhilken14/localhusk/archive/refs/heads/main.zip bash install.sh
-#   HUSK_GITHUB=owner/repo bash <(curl -fsSL ...)
+# One-line installs use the main branch source by default. Set HUSK_PREFER_RELEASE=1
+# to prefer the latest CI-built Release ZIP, or HUSK_RELEASE_URL to use an exact URL.
 #
 set -euo pipefail
 
@@ -28,7 +26,7 @@ fi
 RELEASE_URL="${HUSK_RELEASE_URL:-}"
 TMP_EXTRACT=""
 
-# Newest published Release asset (built by CI with a fresh launcher); empty if none / offline.
+# Newest published Linux Release asset (built by CI); empty if none / offline.
 latest_release_url() {
   local api json=""
   api="https://api.github.com/repos/$1/releases/latest"
@@ -75,19 +73,21 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ -n "$RELEASE_URL" ]]; then
+  # An explicit URL is authoritative: never silently substitute another source.
   download_release "$RELEASE_URL"
 elif [[ -z "$SRC" ]] || { [[ ! -f "$SRC/husk.py" ]] && [[ ! -d "$SRC/husk" ]]; }; then
-  if [[ -n "${HUSK_GITHUB:-${HUSK_DEFAULT_GITHUB}}" ]]; then
-    _gh="${HUSK_GITHUB:-$HUSK_DEFAULT_GITHUB}"
+  _gh="${HUSK_GITHUB:-$HUSK_DEFAULT_GITHUB}"
+  if [[ "${HUSK_PREFER_RELEASE:-0}" == "1" ]]; then
     _latest="$(latest_release_url "$_gh")"
     if [[ -n "$_latest" ]]; then
       download_release "$_latest"
     else
-      say "No published release found; installing from the main branch (its bundled launcher may be outdated)."
+      warn "No Linux x86_64 release asset found; falling back to main branch source."
       download_release "https://github.com/${_gh}/archive/refs/heads/main.zip"
     fi
   else
-    die "Run from an extracted release, or set HUSK_RELEASE_URL / HUSK_GITHUB (or HUSK_DEFAULT_GITHUB in install.sh)."
+    say "Installing from the main branch source (default)."
+    download_release "https://github.com/${_gh}/archive/refs/heads/main.zip"
   fi
 fi
 

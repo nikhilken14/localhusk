@@ -1,8 +1,8 @@
 # Install
 
-See the **[Install section in the README](README.md#install)** for the primary instructions.
+LocalHusk one-line installers use the **main branch source by default**. A local checkout or extracted folder always installs from its local files.
 
-### One-liners
+## Default: main branch source
 
 ```bash
 # Linux / WSL2
@@ -14,10 +14,44 @@ curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.
 irm https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.ps1 | iex
 ```
 
-### Release zip (clickable on GitHub)
+## Optional: prefer the latest CI-built Release ZIP
 
-1. [Releases](https://github.com/nikhilken14/localhusk/releases) → download `localhusk-*-linux-x86_64.zip` or `localhusk-*-windows-x86_64.zip`
-2. Extract → `./install.sh` or `.\install.ps1`
-3. New terminal → `husk`
+```bash
+curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.sh | HUSK_PREFER_RELEASE=1 bash
+```
 
-If you forked the project, replace `nikhilken14/localhusk` with your GitHub path.
+```powershell
+$env:HUSK_PREFER_RELEASE = "1"; irm https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.ps1 | iex
+```
+
+When enabled, the installer selects the latest platform-specific asset (`linux-x86_64` or `windows-x86_64`). If no matching release asset is available, it falls back to the main branch source.
+
+## Exact archive URL
+
+Set `HUSK_RELEASE_URL` to install from that exact URL. It takes precedence over `HUSK_PREFER_RELEASE`; download or extraction errors stop the installation rather than silently switching sources.
+
+```bash
+HUSK_RELEASE_URL="https://example.com/localhusk-linux.zip" bash install.sh
+```
+
+```powershell
+$env:HUSK_RELEASE_URL = "https://example.com/localhusk-windows.zip"
+.\install.ps1
+```
+
+## Local checkout or extracted archive
+
+```bash
+git clone https://github.com/nikhilken14/localhusk.git
+cd localhusk
+./install.sh
+```
+
+```powershell
+cd localhusk
+.\install.ps1
+```
+
+Local files take precedence when the installer is run from a valid project folder. `HUSK_RELEASE_URL` remains an explicit override.
+
+For forks, set `HUSK_GITHUB=owner/repo` for the current shell, or change `HUSK_DEFAULT_GITHUB` in the installer.

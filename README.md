@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT" /></a>
   <a href="#install"><img src="https://img.shields.io/badge/python-3.11+-yellow.svg" alt="Python 3.11+" /></a>
   <a href="#install"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform" /></a>
-  <a href="#install"><img src="https://img.shields.io/badge/version-v1.0.0-green.svg" alt="v1.0.0" /></a>
+  <a href="#install"><img src="https://img.shields.io/badge/version-v1.0.1-green.svg" alt="v1.0.1" /></a>
 </p>
 
 **LocalHusk** is an **open-source, local-first** AI assistant that runs on your computer. Chat in the terminal or the web UI, run agents with tool approval, manage tasks/notes/calendar/mail, schedule automations, and connect MCP servers — without sending your data to a third-party cloud unless **you** choose a remote model provider.
@@ -23,7 +23,7 @@ Yours, with no catch. Conversations, credentials, and memory live under `~/.husk
 
 ## Install
 
-The installer supports **Linux** and **Windows**. It sets up Python, the backend, the UI sources, and a `husk` command on your PATH.
+The installer supports **Linux** and **Windows**. It sets up Python, the backend, the UI sources, and a `husk` command on your PATH. One-line installs use the latest **main branch source by default**; release binaries are opt-in.
 
 ### Linux / WSL2
 
@@ -36,6 +36,20 @@ curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.
 ```powershell
 irm https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.ps1 | iex
 ```
+
+### Prefer the latest CI-built Release ZIP (optional)
+
+```bash
+# Linux / WSL2
+curl -fsSL https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.sh | HUSK_PREFER_RELEASE=1 bash
+```
+
+```powershell
+# Windows PowerShell
+$env:HUSK_PREFER_RELEASE = "1"; irm https://raw.githubusercontent.com/nikhilken14/localhusk/main/install.ps1 | iex
+```
+
+To install from a specific archive URL, set `HUSK_RELEASE_URL` to that exact URL. This takes precedence over `HUSK_PREFER_RELEASE`. For forks, set `HUSK_GITHUB=owner/repo` (or `HUSK_DEFAULT_GITHUB` in the installer). Running `./install.sh` or `.\install.ps1` from a clone or extracted folder continues to install those local files.
 
 ### Already have the repo?
 
@@ -58,7 +72,6 @@ Then open a **new terminal** and run:
 husk
 ```
 
-> **First release:** This is **v1.0.0**. Create a GitHub Release with tag `v1.0.0` (and attach the full zip from the Release workflow) so the Releases page is populated.
 
 ---
 
@@ -146,4 +159,4 @@ cd ../cli-rs && cargo build --release
 
 [MIT](LICENSE) — free to use, modify, and distribute.
 
-**Version:** v1.0.0
+**Version:** v1.0.1
