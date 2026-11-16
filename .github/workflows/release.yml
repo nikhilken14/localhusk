@@ -49,9 +49,8 @@ jobs:
           cd /tmp
           zip -r "${STAGE}.zip" "${STAGE}"
           sha256sum "${STAGE}.zip" | tee "${STAGE}.zip.sha256"
-          echo "LINUX_ZIP=${STAGE}.zip" >> "$GITHUB_ENV"
 
-      - name: Upload Linux artifact
+      - name: Upload Linux package
         uses: actions/upload-artifact@v4
         with:
           name: linux-package
@@ -60,6 +59,13 @@ jobs:
             /tmp/localhusk-*-linux-x86_64.zip.sha256
           retention-days: 5
           if-no-files-found: error
+
+      - name: Upload Linux binary (for repo update)
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binary
+          path: builds/linux/husk
+          retention-days: 1
 
   build-windows:
     name: Build Windows (x86_64)
@@ -85,7 +91,6 @@ jobs:
           $OUT = Join-Path $env:RUNNER_TEMP $STAGE
           New-Item -ItemType Directory -Force -Path $OUT | Out-Null
 
-          # Copy project files (exclude heavy / generated dirs)
           $exclude = @('.git', 'cli-rs\target', 'ui\node_modules', 'ui\dist', 'builds\macos', 'builds\linux')
           Get-ChildItem -Force | Where-Object {
             $name = $_.Name
@@ -94,7 +99,6 @@ jobs:
             Copy-Item $_.FullName -Destination (Join-Path $OUT $_.Name) -Recurse -Force
           }
 
-          # Place binaries
           New-Item -ItemType Directory -Force -Path (Join-Path $OUT 'builds\windows') | Out-Null
           New-Item -ItemType Directory -Force -Path (Join-Path $OUT 'cli-rs\target\release') | Out-Null
           Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'builds\windows\husk.exe')
@@ -109,7 +113,7 @@ jobs:
           Write-Host "Created $zipPath"
           Write-Host "SHA256: $hash"
 
-      - name: Upload Windows artifact
+      - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
           name: windows-package
@@ -118,6 +122,13 @@ jobs:
             ${{ runner.temp }}/localhusk-*-windows-x86_64.zip.sha256
           retention-days: 5
           if-no-files-found: error
+
+      - name: Upload Windows binary (for repo update)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: builds/windows/husk.exe
+          retention-days: 1
 
   release:
     name: Create GitHub Release
@@ -159,22 +170,3 @@ jobs:
             **Linux / WSL2**
             ```bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
-            ```
-
-            **Windows (PowerShell)**
-            ```powershell
-            irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
-            ```
-
-            ### Platform packages
-
-            Download the matching archive below, extract, then run `./install.sh` or `.\install.ps1`.
-
-            - `localhusk-*-linux-x86_64.zip`
-            - `localhusk-*-windows-x86_64.zip`
-
-            SHA-256 checksums are attached as `*.sha256` files.
-
-            After install, open a **new terminal** and run `husk`.
-
-            Data lives under `~/.husk` (Linux) or `%USERPROFILE%\.husk` (Windows).
