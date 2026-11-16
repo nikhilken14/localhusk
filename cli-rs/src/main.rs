@@ -304,22 +304,24 @@ fn main() {
                     ui::dim(&format!("Husk v{PKG_VERSION}{latest}"));
                 }
                 "/status" => {
-                    let api_status = if services.is_backend_running() {
-                        services.backend_url.as_str()
+                    // Own the strings: is_*_running() take &mut self, so we must not
+                    // hold a borrow of services.backend_url across the second call.
+                    let api_status: String = if services.is_backend_running() {
+                        services.backend_url.clone()
                     } else {
-                        "off (starts on /ui)"
+                        "off (starts on /ui)".to_string()
                     };
-                    let ui_status = if services.is_frontend_running() {
-                        services.frontend_url.as_str()
+                    let ui_status: String = if services.is_frontend_running() {
+                        services.frontend_url.clone()
                     } else {
-                        "off"
+                        "off".to_string()
                     };
                     ui::status_table(
                         config::get(&cfg, "LLM_PROVIDER"),
                         config::get(&cfg, "LLM_ENDPOINT"),
                         config::get(&cfg, "LLM_MODEL"),
-                        api_status,
-                        ui_status,
+                        &api_status,
+                        &ui_status,
                         conversation_id.as_deref().unwrap_or("(new)"),
                     );
                 }
