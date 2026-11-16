@@ -18,11 +18,16 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build native CLI
+      - name: Build native CLI (version from tag)
         run: |
+          export HUSK_VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version ${HUSK_VERSION}"
           cd cli-rs
           cargo build --release
           strip target/release/husk || true
+          # Fail the build if the binary does not report the tag version
+          ./target/release/husk --version | tee /tmp/husk-version.txt
+          grep -q "${HUSK_VERSION}" /tmp/husk-version.txt
           mkdir -p ../builds/linux
           cp target/release/husk ../builds/linux/husk
           chmod +x ../builds/linux/husk
@@ -66,6 +71,7 @@ jobs:
           name: linux-binary
           path: builds/linux/husk
           retention-days: 1
+          if-no-files-found: error
 
   build-windows:
     name: Build Windows (x86_64)
@@ -76,10 +82,18 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build native CLI
+      - name: Build native CLI (version from tag)
+        shell: pwsh
         run: |
-          cd cli-rs
+          $env:HUSK_VERSION = $env:GITHUB_REF_NAME.TrimStart('v')
+          Write-Host "Building version $env:HUSK_VERSION"
+          Set-Location cli-rs
           cargo build --release
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+          # Fail the build if the binary does not report the tag version
+          $out = & .\target\release\husk.exe --version
+          Write-Host $out
+          if (-not ($out -match [regex]::Escape($env:HUSK_VERSION))) { throw "Binary version mismatch: $out" }
           New-Item -ItemType Directory -Force -Path ..\builds\windows | Out-Null
           Copy-Item target\release\husk.exe ..\builds\windows\husk.exe
 
@@ -89,20 +103,22 @@ jobs:
           $VERSION = $env:GITHUB_REF_NAME
           $STAGE = "localhusk-$VERSION-windows-x86_64"
           $OUT = Join-Path $env:RUNNER_TEMP $STAGE
+          if (Test-Path $OUT) { Remove-Item $OUT -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $OUT | Out-Null
 
-          $exclude = @('.git', 'cli-rs\target', 'ui\node_modules', 'ui\dist', 'builds\macos', 'builds\linux')
-          Get-ChildItem -Force | Where-Object {
-            $name = $_.Name
-            -not ($exclude -contains $name)
-          } | ForEach-Object {
+          # Copy everything except .git, then remove build junk (nested paths can't be excluded by top-level name)
+          Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | ForEach-Object {
             Copy-Item $_.FullName -Destination (Join-Path $OUT $_.Name) -Recurse -Force
+          }
+          foreach ($p in @('cli-rs\target', 'ui\node_modules', 'ui\dist', 'builds\macos', 'builds\linux')) {
+            $full = Join-Path $OUT $p
+            if (Test-Path $full) { Remove-Item $full -Recurse -Force }
           }
 
           New-Item -ItemType Directory -Force -Path (Join-Path $OUT 'builds\windows') | Out-Null
           New-Item -ItemType Directory -Force -Path (Join-Path $OUT 'cli-rs\target\release') | Out-Null
-          Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'builds\windows\husk.exe')
-          Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'cli-rs\target\release\husk.exe')
+          Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'builds\windows\husk.exe') -Force
+          Copy-Item 'builds\windows\husk.exe' (Join-Path $OUT 'cli-rs\target\release\husk.exe') -Force
 
           $zipPath = Join-Path $env:RUNNER_TEMP "$STAGE.zip"
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
@@ -129,6 +145,7 @@ jobs:
           name: windows-binary
           path: builds/windows/husk.exe
           retention-days: 1
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
@@ -147,32 +164,46 @@ jobs:
           name: windows-package
           path: artifacts
 
-      - name: List assets
+      - name: Write release notes
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           ls -la artifacts/
-          echo "### Checksums" > body-extra.md
-          echo '```' >> body-extra.md
-          cat artifacts/*.sha256 2>/dev/null || true
-          echo '```' >> body-extra.md
+          cat > body.md <<'EOF'
+          ## LocalHusk __TAG__
+
+          Open-source, local-first AI assistant for **Linux** and **Windows** (x86_64).
+
+          ### Quick install
+
+          **Linux / WSL2**
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/__REPO__/main/install.sh | bash
+          ```
+
+          **Windows (PowerShell)**
+          ```powershell
+          irm https://raw.githubusercontent.com/__REPO__/main/install.ps1 | iex
+          ```
+
+          ### Checksums (SHA-256)
+          ```
+          EOF
+          cat artifacts/*.sha256 >> body.md
+          echo '```' >> body.md
+          sed -i "s|__TAG__|${TAG}|g; s|__REPO__|${REPO}|g" body.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
+          body_path: body.md
           generate_release_notes: true
-          body: |
-            ## LocalHusk ${{ github.ref_name }}
 
-            Open-source, local-first AI assistant for **Linux** and **Windows** (x86_64).
-
-            ### Quick install
-
-            **Linux / WSL2**
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
   update-builds:
     name: Replace old builds/ binaries on main
-    needs: [build-linux, build-windows]
+    needs: [release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -207,7 +238,7 @@ jobs:
           ls -la builds/windows builds/linux
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A builds/
+          git add -A -f builds/
           git update-index --chmod=+x builds/linux/husk
           if git diff --cached --quiet; then
             echo "No changes to commit"

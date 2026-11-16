@@ -6,7 +6,12 @@ mod ui;
 use services::Services;
 use std::{collections::HashMap, env, thread};
 
-const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+// Version comes from the git tag: CI sets HUSK_VERSION (e.g. "1.0.4" from tag v1.0.4) at build time.
+// Local builds without it fall back to the placeholder in Cargo.toml.
+const PKG_VERSION: &str = match option_env!("HUSK_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
 
 fn normalize_tag(tag: &str) -> String {
     tag.trim().trim_start_matches(['v', 'V']).to_string()
@@ -299,16 +304,12 @@ fn main() {
                     ui::dim(&format!("Husk v{PKG_VERSION}{latest}"));
                 }
                 "/status" => {
-                    // Run the `&mut self` checks first, so no immutable borrow
-                    // of `services` is alive while they execute.
-                    let backend_up = services.is_backend_running();
-                    let frontend_up = services.is_frontend_running();
-                    let api_status = if backend_up {
+                    let api_status = if services.is_backend_running() {
                         services.backend_url.as_str()
                     } else {
                         "off (starts on /ui)"
                     };
-                    let ui_status = if frontend_up {
+                    let ui_status = if services.is_frontend_running() {
                         services.frontend_url.as_str()
                     } else {
                         "off"

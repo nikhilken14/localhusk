@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - "builds/**"
   pull_request:
     branches: [main, master]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -31,7 +36,6 @@ jobs:
         run: |
           cd husk
           ruff check src tests || true   # non-blocking style for first release; tighten later
-          # Prefer failing only on serious issues once baseline is clean
 
       - name: Pytest
         run: |
@@ -58,8 +62,12 @@ jobs:
           npm run build
 
   rust:
-    name: Rust (check + build)
-    runs-on: ubuntu-latest
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -67,11 +75,22 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cargo check / build
+        shell: bash
+        working-directory: cli-rs
+        env:
+          HUSK_VERSION: 0.0.0-ci
         run: |
-          cd cli-rs
           cargo check --release
           cargo build --release
-          test -x target/release/husk
+
+      - name: Verify binary and version injection
+        shell: bash
+        working-directory: cli-rs
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN=target/release/husk.exe; else BIN=target/release/husk; fi
+          test -f "$BIN"
+          "$BIN" --version | tee /tmp/v.txt
+          grep -q "0.0.0-ci" /tmp/v.txt
 
   install-linux:
     name: Installer smoke (Linux)
@@ -87,7 +106,6 @@ jobs:
 
       - name: Build CLI for installer
         run: |
-          # Use system or install Rust if needed
           if ! command -v cargo >/dev/null; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             source "$HOME/.cargo/env"
@@ -105,7 +123,4 @@ jobs:
           ./install.sh
           test -x "$HUSK_HOME/bin/husk"
           test -d "$HUSK_HOME/venv"
-          # Launcher should at least print help / version without crashing
           "$HUSK_HOME/bin/husk" --help 2>/dev/null || "$HUSK_HOME/bin/husk" -h 2>/dev/null || true
-
-  # Windows installer smoke is optional / slower; keep for later if needed.

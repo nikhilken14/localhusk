@@ -1,6 +1,6 @@
 [package]
 name = "husk"
-version = "1.0.3"
+version = "0.0.0"
 edition = "2021"
 description = "Native Rust launcher for the LocalHusk local AI assistant"
 license = "MIT"
