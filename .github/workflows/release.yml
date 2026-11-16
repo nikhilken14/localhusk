@@ -170,3 +170,49 @@ jobs:
             **Linux / WSL2**
             ```bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+  update-builds:
+    name: Replace old builds/ binaries on main
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main (not the tag)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Delete old builds
+        run: |
+          git rm -rf --ignore-unmatch builds/windows builds/linux
+          rm -rf builds/windows builds/linux
+          mkdir -p builds/windows builds/linux
+
+      - name: Download new Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-binary
+          path: builds/linux
+
+      - name: Download new Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binary
+          path: builds/windows
+
+      - name: Commit and push new builds
+        run: |
+          chmod +x builds/linux/husk
+          ls -la builds/windows builds/linux
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A builds/
+          git update-index --chmod=+x builds/linux/husk
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "ci: refresh builds/ binaries for ${GITHUB_REF_NAME}"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

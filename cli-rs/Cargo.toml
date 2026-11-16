@@ -1,10 +1,10 @@
 [package]
 name = "husk"
-version = "1.0.1"
+version = "1.0.3"
 edition = "2021"
 description = "Native Rust launcher for the LocalHusk local AI assistant"
 license = "MIT"
-repository = "https://github.com/nikhil-b-2003/LocalHusk"
+repository = "https://github.com/nikhilken14/localhusk"
 readme = "README.md"
 
 [[bin]]

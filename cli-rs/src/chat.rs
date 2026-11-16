@@ -67,7 +67,7 @@ fn curl_json(method: &str, url: &str, body: Option<&str>, timeout_secs: &str) ->
 
 /// Fetch the latest GitHub release tag (e.g. "v1.0.1") with a fast 2s timeout.
 pub fn fetch_latest_github_tag() -> Option<String> {
-    let repo = env::var("HUSK_GITHUB_REPO").unwrap_or_else(|_| "nikhil-b-2003/LocalHusk".into());
+    let repo = env::var("HUSK_GITHUB_REPO").unwrap_or_else(|_| "nikhilken14/localhusk".into());
     let url = format!("https://api.github.com/repos/{}/releases/latest", repo.trim());
     let raw = curl_json("GET", &url, None, "2").ok()?;
     extract_json_string(&raw, "tag_name")

@@ -1,7 +1,7 @@
 # LocalHusk installer for Windows PowerShell. Installs per-user; no admin rights required.
 #
-# One-line installs use main branch source by default. Set HUSK_PREFER_RELEASE=1 to
-# prefer the latest CI-built Release ZIP, or HUSK_RELEASE_URL to use an exact URL.
+# One-line installs use the latest GitHub Release by default. Set HUSK_PREFER_RELEASE=0 to
+# install from main branch source instead, or HUSK_RELEASE_URL to use an exact URL.
 #
 $ErrorActionPreference = "Stop"
 
@@ -60,7 +60,7 @@ try {
         Download-Release $ReleaseUrl
     } elseif (-not $Src -or (-not (Test-Path (Join-Path $Src "husk.py")) -and -not (Test-Path (Join-Path $Src "husk")))) {
         $gh = if ($env:HUSK_GITHUB) { $env:HUSK_GITHUB } else { $HuskDefaultGithub }
-        if ($env:HUSK_PREFER_RELEASE -eq "1") {
+        if ($env:HUSK_PREFER_RELEASE -ne "0") {
             $latest = Get-LatestReleaseUrl $gh "localhusk-*-windows-x86_64.zip"
             if ($latest) {
                 Download-Release $latest
@@ -69,7 +69,7 @@ try {
                 Download-Release "https://github.com/$gh/archive/refs/heads/main.zip"
             }
         } else {
-            Say "Installing from the main branch source (default)."
+            Say "Installing from the main branch source (HUSK_PREFER_RELEASE=0)."
             Download-Release "https://github.com/$gh/archive/refs/heads/main.zip"
         }
     }

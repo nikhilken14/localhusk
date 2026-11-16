@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT" /></a>
   <a href="#install"><img src="https://img.shields.io/badge/python-3.11+-yellow.svg" alt="Python 3.11+" /></a>
   <a href="#install"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform" /></a>
-  <a href="#install"><img src="https://img.shields.io/badge/version-v1.0.1-green.svg" alt="v1.0.1" /></a>
+  <a href="https://github.com/nikhilken14/localhusk/releases/latest"><img src="https://img.shields.io/github/v/release/nikhilken14/localhusk?color=green&label=version" alt="Latest release" /></a>
 </p>
 
 **LocalHusk** is an **open-source, local-first** AI assistant that runs on your computer. Chat in the terminal or the web UI, run agents with tool approval, manage tasks/notes/calendar/mail, schedule automations, and connect MCP servers — without sending your data to a third-party cloud unless **you** choose a remote model provider.
@@ -71,7 +71,6 @@ Then open a **new terminal** and run:
 ```bash
 husk
 ```
-
 
 ---
 
